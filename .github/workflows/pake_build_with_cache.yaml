@@ -1,6 +1,25 @@
 name: Build App with Cache
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Web URL to package (for single app build)'
+        required: false
+        default: ''
+        type: string
+      name:
+        description: 'Application name (for single app build)'
+        required: false
+        default: ''
+        type: string
+      build_single:
+        description: 'Build single Windows app?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 jobs:
   build:
@@ -75,7 +94,13 @@ jobs:
     - name: build for windows
       if: matrix.os == 'windows-latest'
       run: |
-        npm run build:all-windows
+        if [ "${{ inputs.build_single }}" == "true" ] && [ -n "${{ inputs.url }}" ] && [ -n "${{ inputs.name }}" ]; then
+          npm run cli:build
+          node cli.js "${{ inputs.url }}" --name "${{ inputs.name }}" --target win
+        else
+          npm run build:all-windows
+        fi
+      shell: bash
 
     - name: Upload files
       env:
