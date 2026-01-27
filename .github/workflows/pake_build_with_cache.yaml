@@ -93,14 +93,14 @@ jobs:
 
     - name: build for windows
       if: matrix.os == 'windows-latest'
+      shell: pwsh
       run: |
-        if [ "${{ inputs.build_single }}" == "true" ] && [ -n "${{ inputs.url }}" ] && [ -n "${{ inputs.name }}" ]; then
+        if ("${{ inputs.build_single }}" -eq "true" -and "${{ inputs.url }}" -ne "" -and "${{ inputs.name }}" -ne "") {
           npm run cli:build
           node cli.js "${{ inputs.url }}" --name "${{ inputs.name }}" --target win
-        else
+        } else {
           npm run build:all-windows
-        fi
-      shell: bash
+        }
 
     - name: Upload files
       env:
