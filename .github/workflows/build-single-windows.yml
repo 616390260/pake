@@ -1,0 +1,88 @@
+name: Build Single Windows App
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Web URL to package'
+        required: true
+        default: 'http://34.96.239.88:8989/'
+        type: string
+      name:
+        description: 'Application name'
+        required: true
+        default: 'TestApp'
+        type: string
+      icon:
+        description: 'Icon path (optional)'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  build-windows:
+    name: Build Windows App
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable-x86_64-msvc
+        profile: minimal
+        override: true
+        target: x86_64-pc-windows-msvc
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build CLI
+      run: npm run cli:build
+
+    - name: Build Windows app
+      shell: pwsh
+      run: |
+        $iconArg = ""
+        if ("${{ inputs.icon }}" -ne "") {
+          $iconArg = "--icon ${{ inputs.icon }}"
+        }
+        node cli.js "${{ inputs.url }}" --name "${{ inputs.name }}" $iconArg --target win
+      env:
+        CI: true
+
+    - name: Upload Windows installer
+      uses: actions/upload-artifact@v3
+      with:
+        name: windows-installer
+        path: |
+          *.msi
+          *.exe
+        retention-days: 30
+
+    - name: Create Release
+      if: success()
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          *.msi
+          *.exe
+        tag_name: v${{ github.run_number }}
+        name: Release ${{ inputs.name }} v${{ github.run_number }}
+        body: |
+          Windows installer for **${{ inputs.name }}**
+          
+          - URL: ${{ inputs.url }}
+          - Build: #${{ github.run_number }}
+          - Commit: ${{ github.sha }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
