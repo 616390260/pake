@@ -110,7 +110,18 @@ jobs:
           npm run build:all-windows
         }
 
-    - name: Upload files
+    - name: Upload artifact (single app)
+      if: matrix.os == 'windows-latest' && inputs.build_single == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-single-installer
+        path: |
+          *.msi
+          *.exe
+        if-no-files-found: error
+
+    - name: Upload files (batch build)
+      if: inputs.build_single != 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         UPLOADTOOL_ISPRERELEASE: true
