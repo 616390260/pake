@@ -25,6 +25,9 @@ export interface PakeCliOptions {
 
   /** mutli arch, Supports both Intel and m1 chips, only for Mac */
   multiArch: boolean;
+
+  /** 目标平台，可选值: mac, win, linux */
+  target?: 'mac' | 'win' | 'linux';
 }
 
 export interface PakeAppOptions extends PakeCliOptions {

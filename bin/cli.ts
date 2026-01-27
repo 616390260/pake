@@ -23,6 +23,7 @@ program
   .option('-r, --no-resizable', 'whether the window can be resizable', DEFAULT_PAKE_OPTIONS.resizable)
   .option('-d, --debug', 'debug', DEFAULT_PAKE_OPTIONS.debug)
   .option('-m, --multi-arch', "available for Mac only, and supports both Intel and M1", DEFAULT_PAKE_OPTIONS.multiArch)
+  .option('--target <platform>', 'target platform: mac, win, or linux (experimental cross-compilation)')
   .action(async (url: string, options: PakeCliOptions) => {
 
     await checkUpdateTips();
@@ -37,7 +38,7 @@ program
       log.setLevel('debug');
     }
 
-    const builder = BuilderFactory.create();
+    const builder = BuilderFactory.create(options.target);
     await builder.prepare();
 
     const appOptions = await handleInputOptions(options, url);

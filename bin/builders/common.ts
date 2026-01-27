@@ -98,6 +98,11 @@ export async function mergeTauriConfig(
   }
 
 
+  // 检查是否在交叉编译 Windows 应用（通过环境变量或参数判断）
+  // 如果构建目标是 Windows，使用 Windows 配置文件
+  const isCrossCompilingWindows = process.env.PAKE_TARGET_PLATFORM === 'win' || 
+                                   (process.platform !== 'win32' && tauriConf.tauri?.bundle?.targets?.includes('msi') === false);
+  
   let configPath = "";
   switch (process.platform) {
     case "win32": {
@@ -105,11 +110,21 @@ export async function mergeTauriConfig(
       break;
     }
     case "darwin": {
-      configPath = path.join(npmDirectory, 'src-tauri/tauri.macos.conf.json');
+      // 如果交叉编译 Windows，使用 Windows 配置
+      if (isCrossCompilingWindows) {
+        configPath = path.join(npmDirectory, 'src-tauri/tauri.windows.conf.json');
+      } else {
+        configPath = path.join(npmDirectory, 'src-tauri/tauri.macos.conf.json');
+      }
       break;
     }
     case "linux": {
-      configPath = path.join(npmDirectory, 'src-tauri/tauri.linux.conf.json');
+      // 如果交叉编译 Windows，使用 Windows 配置
+      if (isCrossCompilingWindows) {
+        configPath = path.join(npmDirectory, 'src-tauri/tauri.windows.conf.json');
+      } else {
+        configPath = path.join(npmDirectory, 'src-tauri/tauri.linux.conf.json');
+      }
       break;
     }
   }
