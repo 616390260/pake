@@ -101,8 +101,8 @@ jobs:
         if ("${{ inputs.build_single }}" -eq "true" -and "${{ inputs.url }}" -ne "" -and "${{ inputs.name }}" -ne "") {
           # 构建单个 Windows 应用
           Write-Host "Building single Windows app: ${{ inputs.name }}"
-          npm run cli:build
-          node cli.js "${{ inputs.url }}" --name "${{ inputs.name }}" --target win
+          # 使用 npx tsx 直接运行 TypeScript 源代码，避免构建问题
+          npx tsx bin/cli.ts "${{ inputs.url }}" --name "${{ inputs.name }}" --target win
         } else {
           # 构建所有应用
           npm run build:all-windows
