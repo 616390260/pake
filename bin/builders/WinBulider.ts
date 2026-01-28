@@ -454,40 +454,43 @@ linker = "x86_64-w64-mingw32-gcc"
       }
     }
 
-    // 如果没有安装包，再尝试查找 exe（便携版）
-    // 如果使用了英文名称生成 MSI，exe 文件名也是英文名称
-    const exeSearchName = containsNonAscii ? buildProductName : name;
-    const exeName = `${name}.exe`; // 最终输出文件名使用中文名称
-    // 查找可能的 exe 文件位置
-    const possibleExePaths = [
-      path.join(npmDirectory, 'src-tauri/target/release', `${exeSearchName}.exe`), // 使用构建时的 productName
-      path.join(npmDirectory, 'src-tauri/target/release', `${name}.exe`), // 使用原始名称
-      path.join(npmDirectory, 'src-tauri/target/release', 'app.exe'), // Cargo 默认名称
-    ];
-    
-    let foundExe = false;
-    for (const exePath of possibleExePaths) {
-      if (await fs.access(exePath).then(() => true).catch(() => false)) {
-        const distPath = path.resolve(exeName);
-        await fs.copyFile(exePath, distPath);
+    // 如果 MSI 失败，尝试回退到 NSIS
+    if (targetBundle === 'msi') {
+      logger.warn('MSI 安装包未找到，尝试回退到 NSIS...');
+      const bundleNsisDir = path.join(npmDirectory, 'src-tauri/target/release/bundle/nsis');
+      let nsisInstallerPath: string | undefined;
+      try {
+        const files = await fs.readdir(bundleNsisDir);
+        const setupCandidates = files
+          .filter(f => f.toLowerCase().endsWith('.exe'))
+          .filter(f => f.toLowerCase().includes('setup'));
+        if (setupCandidates.length > 0) {
+          nsisInstallerPath = path.join(bundleNsisDir, setupCandidates[0]);
+          logger.info(`在 bundle/nsis 目录找到 NSIS 安装包（回退）: ${nsisInstallerPath}`);
+        }
+      } catch (error) {
+        logger.warn('无法读取 bundle/nsis 目录');
+      }
+
+      if (nsisInstallerPath && await fs.access(nsisInstallerPath).then(() => true).catch(() => false)) {
+        const distPath = path.resolve(`${name}-setup.exe`);
+        await fs.copyFile(nsisInstallerPath, distPath);
         logger.success('Build success!');
-        logger.success(`可执行文件已生成: ${distPath}`);
-        logger.warn('⚠️  注意: 只生成了 .exe 文件，而不是 .msi 安装包。');
-        logger.warn('⚠️  这可能是因为 WiX 工具集配置问题。');
-        logger.warn('⚠️  你可以直接运行 .exe 文件，但更推荐使用安装包（nsis *-setup.exe）。');
-        foundExe = true;
-        break;
+        logger.success(`Windows 安装包已生成（NSIS 回退）: ${distPath}`);
+        logger.info('这是一个 NSIS 安装器，双击即可安装');
+        logger.warn('⚠️  注意: MSI 生成失败，已自动回退到 NSIS 安装包。');
+        return;
       }
     }
     
-    if (!foundExe) {
-      logger.error('构建完成，但找不到输出文件。');
-      logger.info('请检查以下目录:');
-      logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release')}`);
-      logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release/bundle/nsis')}`);
-      logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release/bundle')}`);
-      throw new Error('无法找到构建输出文件');
-    }
+    // 如果都失败了，报错（不要提供裸 exe，因为它缺少依赖，双击没反应）
+    logger.error('构建完成，但找不到任何安装包（MSI 或 NSIS）。');
+    logger.error('⚠️  注意: 不会提供裸 .exe 文件，因为它缺少运行依赖，双击无法运行。');
+    logger.info('请检查以下目录:');
+    logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release/bundle/msi')}`);
+    logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release/bundle/nsis')}`);
+    logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release/bundle')}`);
+    throw new Error('无法找到任何可用的安装包（MSI 或 NSIS）');
   }
 
   getBuildAppPath(npmDirectory: string, dmgName: string) {

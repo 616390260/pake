@@ -106,47 +106,48 @@ jobs:
           $exitCode = $LASTEXITCODE
         }
         
-        # 即使构建报错，也检查是否生成了 MSI 或 .exe 文件
+        # 即使构建报错，也检查是否生成了安装包（MSI 或 NSIS setup.exe）
+        # 注意：不要查找裸 exe（target/release/*.exe），因为它缺少依赖，双击没反应
         $outputFound = $false
+        $installerType = "${{ inputs.installer }}".ToLower()
         
-        # 首先检查 MSI 文件
-        $msiFiles = Get-ChildItem -Recurse -Filter "*.msi" -ErrorAction SilentlyContinue
-        if ($msiFiles) {
-          Write-Host "Found MSI files despite error:"
-          $msiFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
-          # 复制到根目录，使用输入的名称
-          $finalMsiName = "${{ inputs.name }}.msi"
-          $msiFiles | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName -Destination $finalMsiName -Force }
-          Write-Host "MSI file copied to: $finalMsiName"
-          $outputFound = $true
-        } else {
-          Write-Host "No MSI files found. Checking for .exe files..."
-          # 查找主应用 .exe 文件（排除构建脚本和工具）
-          # 主应用 .exe 通常在 target/release 目录下，文件名可能是 productName 或 "app.exe"
-          $excludeNames = @("app.exe", "cargo.exe", "rustc.exe", "build_script", "build-script")
-          $exeFiles = Get-ChildItem -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue | 
-            Where-Object { 
-              $exclude = $false
-              foreach ($excludeName in $excludeNames) {
-                if ($_.Name -like "*$excludeName*") {
-                  $exclude = $true
-                  break
-                }
-              }
-              -not $exclude -and $_.DirectoryName -like "*\target\release*" -and $_.DirectoryName -notlike "*\build\*"
-            } |
-            Sort-Object Length -Descending |  # 优先选择较大的文件（主应用通常较大）
-            Select-Object -First 1  # 只取第一个匹配的文件
-          
-          if ($exeFiles) {
-            Write-Host "Found main application .exe file:"
-            Write-Host "  $($exeFiles.FullName)"
-            # 使用输入的名称作为最终文件名
-            $finalExeName = "${{ inputs.name }}.exe"
-            Copy-Item $exeFiles.FullName -Destination $finalExeName -Force
-            Write-Host "Copied to: $finalExeName"
+        # 根据用户选择的类型查找安装包
+        if ($installerType -eq "msi") {
+          # 查找 MSI 安装包
+          $msiFiles = Get-ChildItem -Recurse -Filter "*.msi" -ErrorAction SilentlyContinue | 
+            Where-Object { $_.DirectoryName -like "*\bundle\msi\*" }
+          if ($msiFiles) {
+            Write-Host "Found MSI installer:"
+            $msiFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
+            $finalMsiName = "${{ inputs.name }}.msi"
+            $msiFiles | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName -Destination $finalMsiName -Force }
+            Write-Host "MSI installer copied to: $finalMsiName"
             $outputFound = $true
-            Write-Host "Note: Only .exe file was generated (not .msi installer). This is still usable."
+          } else {
+            Write-Host "MSI not found, trying NSIS as fallback..."
+            # MSI 失败时，自动回退到 NSIS
+            $nsisFiles = Get-ChildItem -Recurse -Filter "*setup.exe" -ErrorAction SilentlyContinue | 
+              Where-Object { $_.DirectoryName -like "*\bundle\nsis\*" -and $_.Name -like "*setup*" }
+            if ($nsisFiles) {
+              Write-Host "Found NSIS installer (fallback):"
+              $nsisFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
+              $finalNsisName = "${{ inputs.name }}-setup.exe"
+              $nsisFiles | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName -Destination $finalNsisName -Force }
+              Write-Host "NSIS installer copied to: $finalNsisName"
+              $outputFound = $true
+            }
+          }
+        } else {
+          # 查找 NSIS 安装包（*-setup.exe）
+          $nsisFiles = Get-ChildItem -Recurse -Filter "*setup.exe" -ErrorAction SilentlyContinue | 
+            Where-Object { $_.DirectoryName -like "*\bundle\nsis\*" -and $_.Name -like "*setup*" }
+          if ($nsisFiles) {
+            Write-Host "Found NSIS installer:"
+            $nsisFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
+            $finalNsisName = "${{ inputs.name }}-setup.exe"
+            $nsisFiles | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName -Destination $finalNsisName -Force }
+            Write-Host "NSIS installer copied to: $finalNsisName"
+            $outputFound = $true
           }
         }
         
