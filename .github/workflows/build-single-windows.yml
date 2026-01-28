@@ -87,6 +87,12 @@ jobs:
         $env:PYTHONIOENCODING = "utf-8"
         cmd /c chcp 65001 > $null
         
+        # 设置 installer 类型环境变量
+        $installerType = "${{ inputs.installer }}".ToLower()
+        $env:PAKE_WINDOWS_INSTALLER = $installerType
+        Write-Host "Installer type: $installerType"
+        Write-Host "PAKE_WINDOWS_INSTALLER=$env:PAKE_WINDOWS_INSTALLER"
+        
         $args = @("${{ inputs.url }}", "--name", "${{ inputs.name }}", "--target", "win")
         if ("${{ inputs.icon }}" -ne "" -and $env:ICON_PATH) {
           $args += @("--icon", $env:ICON_PATH)
