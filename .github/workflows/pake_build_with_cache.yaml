@@ -171,8 +171,57 @@ jobs:
           # 构建应用
           $iconArg = @()
           if ("${{ inputs.icon }}" -ne "") {
-            $iconArg = @("--icon", "${{ inputs.icon }}")
-            Write-Host "Using custom icon: ${{ inputs.icon }}"
+            $iconInput = "${{ inputs.icon }}"
+            $resolvedIco = $null
+
+            # 1) 如果用户直接给了 .ico（URL 或路径），直接用
+            if ($iconInput.ToLower().EndsWith(".ico")) {
+              $resolvedIco = $iconInput
+              Write-Host "Using .ico icon directly: $resolvedIco"
+            } else {
+              # 2) 否则（jpg/png/webp 等），在 runner 上下载并转换为 .ico
+              Write-Host "Icon is not .ico, will download and convert to .ico (256x256)..."
+              $workDir = Join-Path $env:RUNNER_TEMP "pake-icon"
+              New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+
+              $downloadPath = Join-Path $workDir "icon_input"
+              if ($iconInput.StartsWith("http")) {
+                try {
+                  Invoke-WebRequest -Uri $iconInput -OutFile $downloadPath -UseBasicParsing
+                } catch {
+                  Write-Host "Failed to download icon: $iconInput"
+                  throw
+                }
+              } else {
+                # repo 内路径
+                Copy-Item -Force $iconInput $downloadPath
+              }
+
+              # 安装 Pillow 并转换
+              python -m pip install --upgrade pip | Out-Null
+              python -m pip install Pillow | Out-Null
+
+              $icoPath = Join-Path $workDir "icon_256.ico"
+              $env:PAKE_ICON_IN = $downloadPath
+              $env:PAKE_ICON_OUT = $icoPath
+              python - << 'PY'
+from PIL import Image
+import os
+
+src = os.environ.get("PAKE_ICON_IN")
+dst = os.environ.get("PAKE_ICON_OUT")
+img = Image.open(src)
+img = img.convert("RGBA")
+img = img.resize((256, 256))
+img.save(dst, format="ICO")
+print("ICON_CONVERT_OK", dst)
+PY
+              $resolvedIco = $icoPath
+              Write-Host "Converted icon to: $resolvedIco"
+            }
+
+            $iconArg = @("--icon", $resolvedIco)
+            Write-Host "Using custom icon: $resolvedIco"
           }
           # 使用数组方式传递参数，避免引号问题
           $buildArgs = @("${{ inputs.url }}", "--name", "${{ inputs.name }}", "--target", "win") + $iconArg
