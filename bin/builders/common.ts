@@ -60,23 +60,40 @@ export async function mergeTauriConfig(
   Object.assign(tauriConf.tauri.windows[0], { url, ...tauriConfWindowOptions });
   tauriConf.package.productName = name;
   tauriConf.tauri.bundle.identifier = identifier;
+  // 处理图标配置
   const exists = await fs.stat(options.icon)
     .then(() => true)
     .catch(() => false);
+  
+  // 检查是否在交叉编译 Windows 应用
+  const isCrossCompilingWindows = process.env.PAKE_TARGET_PLATFORM === 'win' || 
+                                   (process.platform !== 'win32' && tauriConf.tauri?.bundle?.targets?.includes('msi') === false);
+  
   if (exists) {
     let updateIconPath = true;
     let customIconExt = path.extname(options.icon).toLowerCase();
-    if (process.platform === "win32") {
+    
+    // Windows 平台或交叉编译 Windows
+    if (process.platform === "win32" || isCrossCompilingWindows) {
       if (customIconExt === ".ico") {
-        const ico_path = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_32.ico`);
+        // 复制图标到 png 目录
+        const ico_32_path = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_32.ico`);
+        const ico_256_path = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_256.ico`);
+        await fs.copyFile(options.icon, ico_32_path).catch(() => {});
+        await fs.copyFile(options.icon, ico_256_path).catch(() => {});
+        // 设置 Windows 图标配置
+        tauriConf.tauri.bundle.icon = [
+          `png/${name.toLowerCase()}_256.ico`,
+          `png/${name.toLowerCase()}_32.ico`
+        ];
         tauriConf.tauri.bundle.resources = [`png/${name.toLowerCase()}_32.ico`];
-        await fs.copyFile(options.icon, ico_path);
       } else {
         updateIconPath = false;
         logger.warn(`icon file in Windows must be 256 * 256 pix with .ico type, but you give ${customIconExt}`);
       }
     }
-    if (process.platform === "linux") {
+    
+    if (process.platform === "linux" && !isCrossCompilingWindows) {
       delete tauriConf.tauri.bundle.deb.files;
       if (customIconExt != ".png") {
         updateIconPath = false;
@@ -84,17 +101,43 @@ export async function mergeTauriConfig(
       }
     }
 
-    if (process.platform === "darwin" && customIconExt !== ".icns") {
+    if (process.platform === "darwin" && customIconExt !== ".icns" && !isCrossCompilingWindows) {
         updateIconPath = false;
         logger.warn(`icon file in MacOS must be .icns type, but you give ${customIconExt}`);
     }
-    if (updateIconPath) {
+    
+    if (updateIconPath && !isCrossCompilingWindows) {
       tauriConf.tauri.bundle.icon = [options.icon];
-    } else {
+    } else if (!updateIconPath) {
       logger.warn(`icon file will not change with default.`);
     }
   } else {
-    logger.warn("the custom icon path may not exists. we will use default icon to replace it");
+    // 如果没有提供图标，使用默认图标
+    if (isCrossCompilingWindows || process.platform === "win32") {
+      // Windows 使用默认图标
+      const defaultIcon32 = path.join(npmDirectory, 'src-tauri/png/icon_32.ico');
+      const defaultIcon256 = path.join(npmDirectory, 'src-tauri/png/icon_256.ico');
+      const defaultExists32 = await fs.stat(defaultIcon32).then(() => true).catch(() => false);
+      const defaultExists256 = await fs.stat(defaultIcon256).then(() => true).catch(() => false);
+      
+      if (defaultExists32 && defaultExists256) {
+        // 复制默认图标到应用名称
+        const appIcon32 = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_32.ico`);
+        const appIcon256 = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_256.ico`);
+        await fs.copyFile(defaultIcon32, appIcon32).catch(() => {});
+        await fs.copyFile(defaultIcon256, appIcon256).catch(() => {});
+        tauriConf.tauri.bundle.icon = [
+          `png/${name.toLowerCase()}_256.ico`,
+          `png/${name.toLowerCase()}_32.ico`
+        ];
+        tauriConf.tauri.bundle.resources = [`png/${name.toLowerCase()}_32.ico`];
+        logger.info(`Using default icon for Windows app: ${name}`);
+      } else {
+        logger.warn("Default icon files not found, app will use system default icon");
+      }
+    } else {
+      logger.warn("the custom icon path may not exists. we will use default icon to replace it");
+    }
   }
 
 
@@ -102,6 +145,26 @@ export async function mergeTauriConfig(
   // 如果构建目标是 Windows，使用 Windows 配置文件
   const isCrossCompilingWindows = process.env.PAKE_TARGET_PLATFORM === 'win' || 
                                    (process.platform !== 'win32' && tauriConf.tauri?.bundle?.targets?.includes('msi') === false);
+  
+  // 如果是 Windows 构建（包括交叉编译），确保图标配置正确
+  if (isCrossCompilingWindows || process.platform === "win32") {
+    // 确保 Windows 配置文件中的图标路径是相对路径
+    if (tauriConf.tauri?.bundle?.icon) {
+      const iconArray = Array.isArray(tauriConf.tauri.bundle.icon) 
+        ? tauriConf.tauri.bundle.icon 
+        : [tauriConf.tauri.bundle.icon];
+      
+      // 将绝对路径转换为相对路径
+      tauriConf.tauri.bundle.icon = iconArray.map((icon: string) => {
+        if (path.isAbsolute(icon)) {
+          // 如果是绝对路径，提取相对路径部分
+          const relativePath = path.relative(path.join(npmDirectory, 'src-tauri'), icon);
+          return relativePath.startsWith('png/') ? relativePath : icon;
+        }
+        return icon;
+      });
+    }
+  }
   
   let configPath = "";
   switch (process.platform) {
