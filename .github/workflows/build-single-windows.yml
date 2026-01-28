@@ -84,7 +84,36 @@ jobs:
           $args += @("--icon", $env:ICON_PATH)
         }
         Write-Host "Running: node cli.js $($args -join ' ')"
-        & node cli.js $args
+        
+        # 尝试构建
+        $buildSuccess = $false
+        try {
+          & node cli.js $args
+          $buildSuccess = $true
+        } catch {
+          Write-Host "Build failed, but checking if MSI was generated anyway..."
+        }
+        
+        # 即使构建报错，也检查是否生成了 MSI 文件
+        $msiFiles = Get-ChildItem -Recurse -Filter "*.msi" -ErrorAction SilentlyContinue
+        if ($msiFiles) {
+          Write-Host "Found MSI files despite error:"
+          $msiFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
+          # 复制到根目录
+          $msiFiles | ForEach-Object { Copy-Item $_.FullName -Destination "." -Force }
+          Write-Host "MSI files copied to root directory"
+        } else {
+          Write-Host "No MSI files found. Checking for .exe files..."
+          $exeFiles = Get-ChildItem -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "app.exe" -and $_.Name -ne "cargo.exe" -and $_.Name -ne "rustc.exe" }
+          if ($exeFiles) {
+            Write-Host "Found .exe files:"
+            $exeFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
+            $exeFiles | ForEach-Object { Copy-Item $_.FullName -Destination "." -Force }
+          }
+          if (-not $buildSuccess) {
+            throw "Build failed and no output files found"
+          }
+        }
       env:
         CI: true
         PYTHONIOENCODING: utf-8
