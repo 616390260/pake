@@ -104,14 +104,35 @@ jobs:
           Write-Host "MSI files copied to root directory"
         } else {
           Write-Host "No MSI files found. Checking for .exe files..."
-          $exeFiles = Get-ChildItem -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "app.exe" -and $_.Name -ne "cargo.exe" -and $_.Name -ne "rustc.exe" }
+          # 查找主应用 .exe 文件（排除构建脚本和工具）
+          # 主应用 .exe 通常在 target/release 目录下，文件名可能是 productName 或 "app.exe"
+          $excludeNames = @("app.exe", "cargo.exe", "rustc.exe", "build_script", "build-script")
+          $exeFiles = Get-ChildItem -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue | 
+            Where-Object { 
+              $exclude = $false
+              foreach ($excludeName in $excludeNames) {
+                if ($_.Name -like "*$excludeName*") {
+                  $exclude = $true
+                  break
+                }
+              }
+              -not $exclude -and $_.DirectoryName -like "*\target\release*" -and $_.DirectoryName -notlike "*\build\*"
+            } |
+            Sort-Object Length -Descending |  # 优先选择较大的文件（主应用通常较大）
+            Select-Object -First 1  # 只取第一个匹配的文件
+          
           if ($exeFiles) {
-            Write-Host "Found .exe files:"
-            $exeFiles | ForEach-Object { Write-Host "  $($_.FullName)" }
-            $exeFiles | ForEach-Object { Copy-Item $_.FullName -Destination "." -Force }
-          }
-          if (-not $buildSuccess) {
-            throw "Build failed and no output files found"
+            Write-Host "Found main application .exe file:"
+            Write-Host "  $($exeFiles.FullName)"
+            # 使用输入的名称作为最终文件名
+            $finalExeName = "${{ inputs.name }}.exe"
+            Copy-Item $exeFiles.FullName -Destination $finalExeName -Force
+            Write-Host "Copied to: $finalExeName"
+          } else {
+            Write-Host "No main application .exe file found."
+            if (-not $buildSuccess) {
+              throw "Build failed and no output files found"
+            }
           }
         }
       env:
