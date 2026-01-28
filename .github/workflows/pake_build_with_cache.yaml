@@ -108,6 +108,10 @@ jobs:
       if: matrix.os == 'windows-latest'
       shell: pwsh
       run: |
+        # 关键：切换到 UTF-8，避免 WiX(light.exe) 在中文文件名/路径下失败
+        try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+        cmd /c chcp 65001 > $null
+
         if ("${{ inputs.build_single }}" -eq "true" -and "${{ inputs.url }}" -ne "" -and "${{ inputs.name }}" -ne "") {
           # 构建单个 Windows 应用
           Write-Host "Building single Windows app: ${{ inputs.name }}"
