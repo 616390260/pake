@@ -326,9 +326,25 @@ linker = "x86_64-w64-mingw32-gcc"
     }
 
     // Windows 系统上的正常构建流程
+    // 确保 targets 包含 msi，以便生成安装包
+    if (!tauriConf.tauri?.bundle?.targets || tauriConf.tauri.bundle.targets.length === 0) {
+      tauriConf.tauri.bundle.targets = ['msi'];
+      logger.info('已设置 Windows 构建目标为 msi');
+    } else if (!tauriConf.tauri.bundle.targets.includes('msi')) {
+      tauriConf.tauri.bundle.targets.push('msi');
+      logger.info('已添加 msi 到 Windows 构建目标');
+    }
+    
+    // 保存更新后的配置
+    const configJsonPath = path.join(npmDirectory, 'src-tauri/tauri.conf.json');
+    await fs.writeFile(
+      configJsonPath,
+      Buffer.from(JSON.stringify(tauriConf), 'utf-8')
+    );
+    
     await shellExec(`cd "${npmDirectory}" && npm install && npm run build`);
     
-    // 尝试查找 msi 文件
+    // 尝试查找 msi 文件（优先）
     const language = tauriConf.tauri.bundle?.windows?.wix?.language?.[0] || 'en-US';
     const arch = process.arch === 'x64' ? 'x64' : process.arch;
     const msiName = `${name}_${tauriConf.package.version}_${arch}_${language}.msi`;
@@ -337,22 +353,40 @@ linker = "x86_64-w64-mingw32-gcc"
     if (await fs.access(appPath).then(() => true).catch(() => false)) {
       const distPath = path.resolve(`${name}.msi`);
       await fs.copyFile(appPath, distPath);
-      await fs.unlink(appPath);
       logger.success('Build success!');
-      logger.success('You can find the app installer in', distPath);
+      logger.success(`安装包已生成: ${distPath}`);
+      logger.info('这是一个 .msi 安装包，双击即可安装');
     } else {
-      // 如果没有 msi，尝试查找 exe
+      // 如果没有 msi，尝试查找 exe（使用 productName 作为文件名）
+      // Tauri 使用 productName 作为可执行文件名
       const exeName = `${name}.exe`;
-      const exePath = path.join(npmDirectory, 'src-tauri/target/release', exeName);
-      if (await fs.access(exePath).then(() => true).catch(() => false)) {
-        const distPath = path.resolve(exeName);
-        await fs.copyFile(exePath, distPath);
-        logger.success('Build success!');
-        logger.success('You can find the Windows executable in', distPath);
-        logger.warn('Note: .msi installer was not generated. Only .exe file is available.');
-      } else {
-        logger.error('Build completed but could not find the output file.');
-        logger.info('Please check:', path.join(npmDirectory, 'src-tauri/target/release'));
+      // 也可能在 target/release 目录下，文件名是 productName
+      const possibleExePaths = [
+        path.join(npmDirectory, 'src-tauri/target/release', exeName),
+        path.join(npmDirectory, 'src-tauri/target/release', 'app.exe'), // Cargo 默认名称
+      ];
+      
+      let foundExe = false;
+      for (const exePath of possibleExePaths) {
+        if (await fs.access(exePath).then(() => true).catch(() => false)) {
+          const distPath = path.resolve(exeName);
+          await fs.copyFile(exePath, distPath);
+          logger.success('Build success!');
+          logger.success(`可执行文件已生成: ${distPath}`);
+          logger.warn('⚠️  注意: 只生成了 .exe 文件，而不是 .msi 安装包。');
+          logger.warn('⚠️  .exe 文件是应用程序本身，不是安装包。');
+          logger.warn('⚠️  如果 WiX 工具集未安装，请安装 WiX Toolset 以生成 .msi 安装包。');
+          foundExe = true;
+          break;
+        }
+      }
+      
+      if (!foundExe) {
+        logger.error('构建完成，但找不到输出文件。');
+        logger.info('请检查以下目录:');
+        logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release')}`);
+        logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release/bundle/msi')}`);
+        logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release/bundle')}`);
       }
     }
   }
