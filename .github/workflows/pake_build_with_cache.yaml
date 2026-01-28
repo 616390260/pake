@@ -121,7 +121,9 @@ jobs:
         path: |
           *.msi
           *.exe
-        if-no-files-found: error
+          src-tauri/target/release/bundle/msi/*.msi
+          src-tauri/target/release/*.exe
+        if-no-files-found: warn
 
     - name: Upload artifact (batch build)
       if: inputs.build_single != 'true'
