@@ -330,8 +330,11 @@ linker = "x86_64-w64-mingw32-gcc"
     // 安装包类型选择（默认 nsis；可通过环境变量切换为 msi）
     // - nsis: 生成 *-setup.exe 安装器（推荐，较少依赖，CI 更稳）
     // - msi : 需要 WiX（candle/light），如果 light.exe 失败会导致 MSI 无法生成
-    const installerType = (process.env.PAKE_WINDOWS_INSTALLER || 'nsis').toLowerCase();
+    const installerTypeEnv = process.env.PAKE_WINDOWS_INSTALLER;
+    logger.info(`环境变量 PAKE_WINDOWS_INSTALLER: ${installerTypeEnv || '(未设置)'}`);
+    const installerType = (installerTypeEnv || 'nsis').toLowerCase();
     const targetBundle = installerType === 'msi' ? 'msi' : 'nsis';
+    logger.info(`选择的安装包类型: ${installerType}, targetBundle: ${targetBundle}`);
 
     if (!tauriConf.tauri?.bundle?.targets || tauriConf.tauri.bundle.targets.length === 0) {
       tauriConf.tauri.bundle.targets = [targetBundle];
