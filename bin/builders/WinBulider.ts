@@ -252,6 +252,31 @@ linker = "x86_64-w64-mingw32-gcc"
         logger.warn('无法更新 Windows 配置文件');
       }
       
+      // 确保图标文件被复制到资源目录（用于运行时加载）
+      const resourcesDir = path.join(npmDirectory, 'src-tauri/target', target, 'release/png');
+      await fs.mkdir(resourcesDir, { recursive: true }).catch(() => {});
+      
+      // 复制图标文件到构建输出目录
+      const icon32Source = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_32.ico`);
+      const icon256Source = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_256.ico`);
+      const icon32Dest = path.join(resourcesDir, `${name.toLowerCase()}_32.ico`);
+      const icon256Dest = path.join(resourcesDir, `${name.toLowerCase()}_256.ico`);
+      
+      // 检查图标是否存在，如果不存在则使用默认图标
+      const defaultIcon32 = path.join(npmDirectory, 'src-tauri/png/icon_32.ico');
+      const defaultIcon256 = path.join(npmDirectory, 'src-tauri/png/icon_256.ico');
+      
+      const icon32ToCopy = await fs.access(icon32Source).then(() => icon32Source).catch(() => defaultIcon32);
+      const icon256ToCopy = await fs.access(icon256Source).then(() => icon256Source).catch(() => defaultIcon256);
+      
+      try {
+        await fs.copyFile(icon32ToCopy, icon32Dest);
+        await fs.copyFile(icon256ToCopy, icon256Dest);
+        logger.info(`已复制图标文件到构建目录: ${icon32Dest}`);
+      } catch (error) {
+        logger.warn('无法复制图标文件，应用将使用系统默认图标');
+      }
+      
       // 构建命令 - 使用 cargo build 而不是 tauri build，避免 bundle 步骤
       // 或者使用 tauri build 但确保 targets 为空
       const buildCommand = `cd "${npmDirectory}/src-tauri" && cargo build --release --target ${target}`;
@@ -259,6 +284,18 @@ linker = "x86_64-w64-mingw32-gcc"
       logger.info(`Running: ${buildCommand}`);
       logger.info('注意: 使用 cargo build 直接构建，跳过 Tauri bundle 步骤');
       await shellExec(buildCommand);
+      
+      // 构建后再次复制图标到 exe 所在目录（确保运行时能找到）
+      const exeDir = path.join(npmDirectory, 'src-tauri/target', target, 'release');
+      const exeIcon32Dest = path.join(exeDir, 'png', `${name.toLowerCase()}_32.ico`);
+      const exeIcon256Dest = path.join(exeDir, 'png', `${name.toLowerCase()}_256.ico`);
+      await fs.mkdir(path.dirname(exeIcon32Dest), { recursive: true }).catch(() => {});
+      try {
+        await fs.copyFile(icon32ToCopy, exeIcon32Dest);
+        await fs.copyFile(icon256ToCopy, exeIcon256Dest);
+      } catch (error) {
+        // 忽略错误
+      }
       
       // 查找生成的 exe 文件（可能在多个位置）
       const exeName = `${name}.exe`;
