@@ -73,11 +73,12 @@ jobs:
     - name: Build Windows app
       shell: pwsh
       run: |
-        $iconArg = ""
+        $args = @("${{ inputs.url }}", "--name", "${{ inputs.name }}", "--target", "win")
         if ("${{ inputs.icon }}" -ne "" -and $env:ICON_PATH) {
-          $iconArg = "--icon $env:ICON_PATH"
+          $args += @("--icon", $env:ICON_PATH)
         }
-        node cli.js "${{ inputs.url }}" --name "${{ inputs.name }}" $iconArg --target win
+        Write-Host "Running: node cli.js $($args -join ' ')"
+        & node cli.js $args
       env:
         CI: true
 
