@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import crypto from 'crypto';
 import prompts from 'prompts';
 import { checkRustInstalled, installRust, checkMSVCInstalled, checkWiXInstalled, checkMinGWInstalled, checkRustWindowsGnuTarget } from '@/helpers/rust.js';
 import { PakeAppOptions } from '@/types.js';
@@ -346,7 +347,6 @@ linker = "x86_64-w64-mingw32-gcc"
       // 这里使用一个简单的方案：将中文转换为拼音首字母，或使用一个固定的英文前缀
       // 为了简单，我们使用 "App" + 时间戳，或者使用 name 的拼音首字母
       // 但为了保持一致性，我们使用一个基于 name 的哈希值
-      const crypto = require('crypto');
       const hash = crypto.createHash('md5').update(name).digest('hex').substring(0, 8);
       buildProductName = `App${hash}`;
       logger.info(`检测到中文名称 "${name}"，使用英文名称 "${buildProductName}" 生成 MSI 文件名`);
