@@ -1,4 +1,5 @@
 name: Build App with Cache
+# NOTE: touch to force GitHub to re-index workflow_dispatch (no behavior change)
 on:
   workflow_dispatch:
     inputs:
