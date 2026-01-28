@@ -421,8 +421,8 @@ linker = "x86_64-w64-mingw32-gcc"
     }
 
     // 如果没有 NSIS 安装包，再尝试查找 exe（便携版）
-      // 如果使用了英文名称生成 MSI，exe 文件名也是英文名称
-      const exeSearchName = containsNonAscii ? buildProductName : name;
+    // 如果使用了英文名称生成 MSI，exe 文件名也是英文名称
+    const exeSearchName = containsNonAscii ? buildProductName : name;
       const exeName = `${name}.exe`; // 最终输出文件名使用中文名称
       // 查找可能的 exe 文件位置
       const possibleExePaths = [
