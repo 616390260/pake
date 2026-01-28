@@ -12,6 +12,11 @@ on:
         required: false
         default: ''
         type: string
+      icon:
+        description: 'Icon URL or path (optional, e.g., https://example.com/icon.ico or path/to/icon.ico)'
+        required: false
+        default: ''
+        type: string
       build_single:
         description: 'Build single Windows app?'
         required: false
@@ -108,6 +113,7 @@ jobs:
           Write-Host "Building single Windows app: ${{ inputs.name }}"
           Write-Host "URL: ${{ inputs.url }}"
           Write-Host "Name: ${{ inputs.name }}"
+          Write-Host "Icon: ${{ inputs.icon }}"
           # 清理旧的构建文件和缓存
           Write-Host "Cleaning old build files and configurations..."
           Remove-Item -Force -ErrorAction SilentlyContinue dist/cli.js
@@ -159,7 +165,12 @@ jobs:
           # 重新构建 CLI
           npm run cli:build
           # 构建应用
-          node cli.js "${{ inputs.url }}" --name "${{ inputs.name }}" --target win
+          $iconArg = ""
+          if ("${{ inputs.icon }}" -ne "") {
+            $iconArg = "--icon `"${{ inputs.icon }}`""
+            Write-Host "Using custom icon: ${{ inputs.icon }}"
+          }
+          node cli.js "${{ inputs.url }}" --name "${{ inputs.name }}" $iconArg --target win
           # 验证生成的文件
           Write-Host "`n=== Generated files ==="
           Get-ChildItem -Filter "*.msi" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "MSI: $($_.Name) - Size: $($_.Length) bytes" }
