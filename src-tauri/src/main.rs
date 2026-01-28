@@ -31,7 +31,8 @@ use std::path::PathBuf;
 
 enum UserEvent {
     DownloadStarted(String, String),
-    DownloadComplete(Option<PathBuf>, bool),
+    #[allow(dead_code)]
+    DownloadComplete((), bool), // path 字段保留用于未来扩展
 }
 
 fn main() -> wry::Result<()> {
