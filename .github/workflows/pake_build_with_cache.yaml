@@ -113,6 +113,31 @@ jobs:
           npm run build:all-windows
         }
 
+    - name: List build outputs (single app)
+      if: matrix.os == 'windows-latest' && inputs.build_single == 'true'
+      shell: pwsh
+      run: |
+        Write-Host "=== Checking for build outputs ==="
+        Write-Host "Current directory: $(Get-Location)"
+        Write-Host ""
+        Write-Host "Files in root directory (*.msi, *.exe):"
+        Get-ChildItem -Filter "*.msi" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  Found: $($_.FullName)" }
+        Get-ChildItem -Filter "*.exe" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  Found: $($_.FullName)" }
+        Write-Host ""
+        Write-Host "Files in src-tauri/target/release/bundle/msi/:"
+        if (Test-Path "src-tauri/target/release/bundle/msi") {
+          Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  Found: $($_.FullName)" }
+        } else {
+          Write-Host "  Directory does not exist"
+        }
+        Write-Host ""
+        Write-Host "Files in src-tauri/target/release/:"
+        if (Test-Path "src-tauri/target/release") {
+          Get-ChildItem -Path "src-tauri/target/release" -Filter "*.exe" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  Found: $($_.FullName)" }
+        } else {
+          Write-Host "  Directory does not exist"
+        }
+
     - name: Upload artifact (single app)
       if: matrix.os == 'windows-latest' && inputs.build_single == 'true'
       uses: actions/upload-artifact@v4
