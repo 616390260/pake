@@ -48,12 +48,15 @@ export async function mergeTauriConfig(
     }
   }
   if (process.platform === "win32") {
-    const reg = new RegExp(/([0-9]*[a-zA-Z]+[0-9]*)+/);
-    if (!reg.test(name) || reg.exec(name)[0].length != name.length) {
-      logger.error("package name is illegal， it must be letters, numbers, and it must contain the letters")
-      logger.error("E.g 123pan,123Pan,Pan123,weread,WeRead,WERead");
+    // Windows productName 可以包含中文字符，只需要至少包含一个字符即可
+    // identifier 会由 getIdentifier 函数处理，确保是有效的包标识符
+    if (!name || name.trim().length === 0) {
+      logger.error("package name cannot be empty");
       process.exit();
     }
+    // 允许中文、字母、数字和常见符号
+    // productName 用于显示，可以包含任何字符
+    logger.info(`Windows productName: ${name} (允许包含中文)`);
   }
 
 

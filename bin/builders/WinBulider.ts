@@ -354,13 +354,20 @@ linker = "x86_64-w64-mingw32-gcc"
     }
     logger.info('配置已正确更新并验证');
     
+    // 构建前再次验证配置
+    const finalConfig = JSON.parse(await fs.readFile(path.join(npmDirectory, 'src-tauri/tauri.conf.json'), 'utf-8'));
+    logger.info(`最终构建配置 - productName: ${finalConfig.package.productName}`);
+    
     await shellExec(`cd "${npmDirectory}" && npm install && npm run build`);
     
     // 尝试查找 msi 文件（优先）
     const language = tauriConf.tauri.bundle?.windows?.wix?.language?.[0] || 'en-US';
     const arch = process.arch === 'x64' ? 'x64' : process.arch;
+    // 使用 productName 作为文件名（可能包含中文）
     const msiName = `${name}_${tauriConf.package.version}_${arch}_${language}.msi`;
     const appPath = this.getBuildAppPath(npmDirectory, msiName);
+    
+    logger.info(`查找 MSI 文件: ${appPath}`);
     
     if (await fs.access(appPath).then(() => true).catch(() => false)) {
       const distPath = path.resolve(`${name}.msi`);
