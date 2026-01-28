@@ -327,17 +327,18 @@ linker = "x86_64-w64-mingw32-gcc"
     }
 
     // Windows 系统上的正常构建流程
-    // 默认使用 NSIS 生成安装包（不依赖 WiX/light.exe）
-    // 说明：MSI 需要 WiX，且在 CI 场景经常因 light.exe 失败导致无法产出安装包；
-    // NSIS 生成的是 *-setup.exe 安装器，双击即可安装，且对中文路径/文件名更稳。
+    // 安装包类型选择（默认 nsis；可通过环境变量切换为 msi）
+    // - nsis: 生成 *-setup.exe 安装器（推荐，较少依赖，CI 更稳）
+    // - msi : 需要 WiX（candle/light），如果 light.exe 失败会导致 MSI 无法生成
+    const installerType = (process.env.PAKE_WINDOWS_INSTALLER || 'nsis').toLowerCase();
+    const targetBundle = installerType === 'msi' ? 'msi' : 'nsis';
+
     if (!tauriConf.tauri?.bundle?.targets || tauriConf.tauri.bundle.targets.length === 0) {
-      tauriConf.tauri.bundle.targets = ['nsis'];
-      logger.info('已设置 Windows 构建目标为 nsis');
+      tauriConf.tauri.bundle.targets = [targetBundle];
     } else {
-      // 强制只用 nsis，避免 msi 失败让整个构建失败
-      tauriConf.tauri.bundle.targets = ['nsis'];
-      logger.info('已强制 Windows 构建目标为 nsis（禁用 msi）');
+      tauriConf.tauri.bundle.targets = [targetBundle];
     }
+    logger.info(`已设置 Windows 构建目标为 ${targetBundle}`);
     
     // 检查 productName 是否包含非 ASCII 字符（如中文）
     // 如果包含，使用英文名称生成 MSI 文件名，但保持应用内部显示名称为中文
@@ -395,32 +396,65 @@ linker = "x86_64-w64-mingw32-gcc"
       logger.info(`已恢复 productName 为 "${name}"`);
     }
     
-    // 优先查找 NSIS 安装包（*-setup.exe）
-    const bundleNsisDir = path.join(npmDirectory, 'src-tauri/target/release/bundle/nsis');
-    let installerPath: string | undefined;
-    try {
-      const files = await fs.readdir(bundleNsisDir);
-      const setupCandidates = files
-        .filter(f => f.toLowerCase().endsWith('.exe'))
-        .filter(f => f.toLowerCase().includes('setup'));
-      if (setupCandidates.length > 0) {
-        installerPath = path.join(bundleNsisDir, setupCandidates[0]);
-        logger.info(`在 bundle/nsis 目录找到安装包: ${installerPath}`);
+    // 根据目标查找安装包
+    if (targetBundle === 'nsis') {
+      const bundleNsisDir = path.join(npmDirectory, 'src-tauri/target/release/bundle/nsis');
+      let installerPath: string | undefined;
+      try {
+        const files = await fs.readdir(bundleNsisDir);
+        const setupCandidates = files
+          .filter(f => f.toLowerCase().endsWith('.exe'))
+          .filter(f => f.toLowerCase().includes('setup'));
+        if (setupCandidates.length > 0) {
+          installerPath = path.join(bundleNsisDir, setupCandidates[0]);
+          logger.info(`在 bundle/nsis 目录找到安装包: ${installerPath}`);
+        }
+      } catch (error) {
+        logger.warn('无法读取 bundle/nsis 目录（可能未生成 NSIS 安装包）');
       }
-    } catch (error) {
-      logger.warn('无法读取 bundle/nsis 目录（可能未生成 NSIS 安装包）');
+
+      if (installerPath && await fs.access(installerPath).then(() => true).catch(() => false)) {
+        const distPath = path.resolve(`${name}-setup.exe`);
+        await fs.copyFile(installerPath, distPath);
+        logger.success('Build success!');
+        logger.success(`Windows 安装包已生成: ${distPath}`);
+        logger.info('这是一个 NSIS 安装器，双击即可安装');
+        return;
+      }
+    } else {
+      // msi
+      const bundleMsiDir = path.join(npmDirectory, 'src-tauri/target/release/bundle/msi');
+      const language = tauriConf.tauri.bundle?.windows?.wix?.language?.[0] || 'en-US';
+      const arch = process.arch === 'x64' ? 'x64' : process.arch;
+      const searchMsiName = containsNonAscii
+        ? `${buildProductName}_${tauriConf.package.version}_${arch}_${language}.msi`
+        : `${name}_${tauriConf.package.version}_${arch}_${language}.msi`;
+      let msiPath = path.join(bundleMsiDir, searchMsiName);
+
+      if (!(await fs.access(msiPath).then(() => true).catch(() => false))) {
+        try {
+          const files = await fs.readdir(bundleMsiDir);
+          const msiFiles = files.filter(f => f.toLowerCase().endsWith('.msi'));
+          if (msiFiles.length > 0) {
+            msiPath = path.join(bundleMsiDir, msiFiles[0]);
+            logger.info(`在 bundle/msi 目录找到 MSI 文件: ${msiPath}`);
+          }
+        } catch (error) {
+          logger.warn('无法读取 bundle/msi 目录（可能未生成 MSI 安装包）');
+        }
+      }
+
+      if (await fs.access(msiPath).then(() => true).catch(() => false)) {
+        const distPath = path.resolve(`${name}.msi`);
+        await fs.copyFile(msiPath, distPath);
+        logger.success('Build success!');
+        logger.success(`MSI 安装包已生成: ${distPath}`);
+        logger.info('这是一个 MSI 安装包，双击即可安装');
+        return;
+      }
     }
 
-    if (installerPath && await fs.access(installerPath).then(() => true).catch(() => false)) {
-      const distPath = path.resolve(`${name}-setup.exe`);
-      await fs.copyFile(installerPath, distPath);
-      logger.success('Build success!');
-      logger.success(`Windows 安装包已生成: ${distPath}`);
-      logger.info('这是一个 NSIS 安装器，双击即可安装');
-      return;
-    }
-
-    // 如果没有 NSIS 安装包，再尝试查找 exe（便携版）
+    // 如果没有安装包，再尝试查找 exe（便携版）
     // 如果使用了英文名称生成 MSI，exe 文件名也是英文名称
     const exeSearchName = containsNonAscii ? buildProductName : name;
     const exeName = `${name}.exe`; // 最终输出文件名使用中文名称

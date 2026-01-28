@@ -18,6 +18,14 @@ on:
         required: false
         default: ''
         type: string
+      installer:
+        description: 'Installer type: nsis (recommended) or msi (requires WiX; may fail if light.exe fails)'
+        required: true
+        default: 'nsis'
+        type: choice
+        options:
+          - nsis
+          - msi
 
 jobs:
   build-windows:
@@ -84,6 +92,7 @@ jobs:
           $args += @("--icon", $env:ICON_PATH)
         }
         Write-Host "Running: node cli.js $($args -join ' ')"
+        $env:PAKE_WINDOWS_INSTALLER = "${{ inputs.installer }}"
         
         # 尝试构建
         $buildSuccess = $false
