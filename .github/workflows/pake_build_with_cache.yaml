@@ -165,12 +165,15 @@ jobs:
           # 重新构建 CLI
           npm run cli:build
           # 构建应用
-          $iconArg = ""
+          $iconArg = @()
           if ("${{ inputs.icon }}" -ne "") {
-            $iconArg = "--icon `"${{ inputs.icon }}`""
+            $iconArg = @("--icon", "${{ inputs.icon }}")
             Write-Host "Using custom icon: ${{ inputs.icon }}"
           }
-          node cli.js "${{ inputs.url }}" --name "${{ inputs.name }}" $iconArg --target win
+          # 使用数组方式传递参数，避免引号问题
+          $buildArgs = @("${{ inputs.url }}", "--name", "${{ inputs.name }}", "--target", "win") + $iconArg
+          Write-Host "Build command: node cli.js $($buildArgs -join ' ')"
+          & node cli.js $buildArgs
           # 验证生成的文件
           Write-Host "`n=== Generated files ==="
           Get-ChildItem -Filter "*.msi" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "MSI: $($_.Name) - Size: $($_.Length) bytes" }
