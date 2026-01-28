@@ -189,6 +189,22 @@ export async function mergeTauriConfig(
     }
   }
 
+  // 对于 Windows 构建，确保 WiX 配置支持中文
+  if (process.platform === "win32" || isCrossCompilingWindows) {
+    if (!tauriConf.tauri.bundle.windows) {
+      tauriConf.tauri.bundle.windows = {};
+    }
+    if (!tauriConf.tauri.bundle.windows.wix) {
+      tauriConf.tauri.bundle.windows.wix = {};
+    }
+    // 设置 WiX 语言和 codepage，支持中文
+    if (!tauriConf.tauri.bundle.windows.wix.language) {
+      tauriConf.tauri.bundle.windows.wix.language = ['zh-CN', 'en-US'];
+    }
+    // 确保 codepage 支持 UTF-8 (65001) 或 GBK (936)
+    // Tauri 会自动处理 codepage，但我们可以确保配置正确
+  }
+  
   let bundleConf = {tauri: {bundle: tauriConf.tauri.bundle}};
   await fs.writeFile(
     configPath,
