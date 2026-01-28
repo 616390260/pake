@@ -11,10 +11,10 @@ on:
       name:
         description: 'Application name'
         required: true
-        default: 'TestApp'
+        default: '欧联'
         type: string
       icon:
-        description: 'Icon path (optional)'
+        description: 'Icon URL (jpg/png/ico). If not .ico, will auto-convert'
         required: false
         default: ''
         type: string
@@ -47,12 +47,35 @@ jobs:
     - name: Build CLI
       run: npm run cli:build
 
+    - name: Convert icon to .ico (if needed)
+      shell: pwsh
+      if: inputs.icon != ''
+      run: |
+        $iconUrl = "${{ inputs.icon }}"
+        if ($iconUrl.ToLower().EndsWith(".ico")) {
+          Write-Host "Icon is already .ico, using directly"
+          echo "ICON_PATH=$iconUrl" >> $env:GITHUB_ENV
+        } else {
+          Write-Host "Converting icon to .ico..."
+          $tempDir = "$env:RUNNER_TEMP\pake-icon"
+          New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+          $inputFile = "$tempDir\icon_input"
+          $outputFile = "$tempDir\icon.ico"
+          
+          Invoke-WebRequest -Uri $iconUrl -OutFile $inputFile -UseBasicParsing
+          python -m pip install Pillow --quiet
+          python -c "from PIL import Image; img = Image.open(r'$inputFile').convert('RGBA').resize((256, 256)); img.save(r'$outputFile', format='ICO')"
+          
+          echo "ICON_PATH=$outputFile" >> $env:GITHUB_ENV
+          Write-Host "Icon converted: $outputFile"
+        }
+
     - name: Build Windows app
       shell: pwsh
       run: |
         $iconArg = ""
-        if ("${{ inputs.icon }}" -ne "") {
-          $iconArg = "--icon ${{ inputs.icon }}"
+        if ("${{ inputs.icon }}" -ne "" -and $env:ICON_PATH) {
+          $iconArg = "--icon $env:ICON_PATH"
         }
         node cli.js "${{ inputs.url }}" --name "${{ inputs.name }}" $iconArg --target win
       env:
@@ -66,23 +89,3 @@ jobs:
           *.msi
           *.exe
         retention-days: 30
-
-    - name: Create Release
-      if: success()
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          *.msi
-          *.exe
-        tag_name: v${{ github.run_number }}
-        name: Release ${{ inputs.name }} v${{ github.run_number }}
-        body: |
-          Windows installer for **${{ inputs.name }}**
-          
-          - URL: ${{ inputs.url }}
-          - Build: #${{ github.run_number }}
-          - Commit: ${{ github.sha }}
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
