@@ -431,26 +431,37 @@ linker = "x86_64-w64-mingw32-gcc"
         : `${name}_${tauriConf.package.version}_${arch}_${language}.msi`;
       let msiPath = path.join(bundleMsiDir, searchMsiName);
 
-      if (!(await fs.access(msiPath).then(() => true).catch(() => false))) {
+      logger.info(`查找 MSI 文件: ${msiPath}`);
+      
+      // 先尝试精确匹配
+      let msiFound = await fs.access(msiPath).then(() => true).catch(() => false);
+      
+      // 如果精确匹配失败，尝试查找目录中的所有 MSI 文件
+      if (!msiFound) {
         try {
           const files = await fs.readdir(bundleMsiDir);
           const msiFiles = files.filter(f => f.toLowerCase().endsWith('.msi'));
+          logger.info(`在 bundle/msi 目录找到 ${msiFiles.length} 个 MSI 文件: ${msiFiles.join(', ')}`);
           if (msiFiles.length > 0) {
             msiPath = path.join(bundleMsiDir, msiFiles[0]);
-            logger.info(`在 bundle/msi 目录找到 MSI 文件: ${msiPath}`);
+            logger.info(`使用第一个 MSI 文件: ${msiPath}`);
+            msiFound = await fs.access(msiPath).then(() => true).catch(() => false);
           }
         } catch (error) {
-          logger.warn('无法读取 bundle/msi 目录（可能未生成 MSI 安装包）');
+          logger.warn(`无法读取 bundle/msi 目录: ${error}`);
+          logger.info(`尝试的路径: ${bundleMsiDir}`);
         }
       }
 
-      if (await fs.access(msiPath).then(() => true).catch(() => false)) {
+      if (msiFound) {
         const distPath = path.resolve(`${name}.msi`);
         await fs.copyFile(msiPath, distPath);
         logger.success('Build success!');
         logger.success(`MSI 安装包已生成: ${distPath}`);
         logger.info('这是一个 MSI 安装包，双击即可安装');
         return;
+      } else {
+        logger.warn(`MSI 文件未找到，尝试的路径: ${msiPath}`);
       }
     }
 
