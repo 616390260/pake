@@ -92,21 +92,40 @@ jobs:
           $args += @("--icon", $env:ICON_PATH)
         }
         Write-Host "Running: node cli.js $($args -join ' ')"
-        $env:PAKE_WINDOWS_INSTALLER = "${{ inputs.installer }}"
         
-        # 尝试构建
+        # 两段式构建：
+        # - 如果用户选 msi：先尝试 msi，失败后自动再尝试 nsis（确保一定有可安装的 setup.exe）
+        # - 如果用户选 nsis：直接 nsis
+        $requestedInstaller = "${{ inputs.installer }}".ToLower()
+        $attempts = @()
+        if ($requestedInstaller -eq "msi") {
+          $attempts = @("msi", "nsis")
+        } else {
+          $attempts = @("nsis")
+        }
+
         $buildSuccess = $false
-        $exitCode = 0
-        try {
-          & node cli.js $args
-          $buildSuccess = $true
-          $exitCode = $LASTEXITCODE
-        } catch {
-          Write-Host "Build command failed, but checking if output files were generated anyway..."
-          $exitCode = $LASTEXITCODE
+        foreach ($attempt in $attempts) {
+          Write-Host "==== Build attempt: $attempt ===="
+          $env:PAKE_WINDOWS_INSTALLER = $attempt
+          try {
+            & node cli.js $args
+            if ($LASTEXITCODE -eq 0) {
+              $buildSuccess = $true
+            }
+          } catch {
+            Write-Host "Build attempt failed: $attempt"
+          }
+
+          # 如果本次已经产出了安装包，就不再继续下一次尝试
+          $msiFiles = Get-ChildItem -Recurse -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\msi\*" }
+          $nsisFiles = Get-ChildItem -Recurse -Filter "*setup.exe" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\nsis\*" -and $_.Name -like "*setup*" }
+          if ($msiFiles -or $nsisFiles) {
+            break
+          }
         }
         
-        # 即使构建报错，也检查是否生成了安装包（MSI 或 NSIS setup.exe）
+        # 检查是否生成了安装包（MSI 或 NSIS setup.exe）
         # 注意：不要查找裸 exe（target/release/*.exe），因为它缺少依赖，双击没反应
         $outputFound = $false
         $installerType = "${{ inputs.installer }}".ToLower()
