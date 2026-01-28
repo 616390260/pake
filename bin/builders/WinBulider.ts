@@ -335,12 +335,24 @@ linker = "x86_64-w64-mingw32-gcc"
       logger.info('已添加 msi 到 Windows 构建目标');
     }
     
+    // 验证配置中的名称
+    logger.info(`构建配置 - productName: ${tauriConf.package.productName}`);
+    logger.info(`构建配置 - name 参数: ${name}`);
+    
     // 保存更新后的配置
     const configJsonPath = path.join(npmDirectory, 'src-tauri/tauri.conf.json');
     await fs.writeFile(
       configJsonPath,
-      Buffer.from(JSON.stringify(tauriConf), 'utf-8')
+      Buffer.from(JSON.stringify(tauriConf, null, 2), 'utf-8')
     );
+    
+    // 验证文件已正确写入
+    const verifyConfig = JSON.parse(await fs.readFile(configJsonPath, 'utf-8'));
+    if (verifyConfig.package.productName !== name) {
+      logger.error(`配置验证失败: productName 应该是 "${name}"，但实际是 "${verifyConfig.package.productName}"`);
+      throw new Error('配置更新失败');
+    }
+    logger.info('配置已正确更新并验证');
     
     await shellExec(`cd "${npmDirectory}" && npm install && npm run build`);
     

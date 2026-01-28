@@ -109,13 +109,52 @@ jobs:
           Write-Host "URL: ${{ inputs.url }}"
           Write-Host "Name: ${{ inputs.name }}"
           # 清理旧的构建文件和缓存
+          Write-Host "Cleaning old build files and configurations..."
           Remove-Item -Force -ErrorAction SilentlyContinue dist/cli.js
           Remove-Item -Force -ErrorAction SilentlyContinue *.msi
           Remove-Item -Force -ErrorAction SilentlyContinue *.exe
-          # 清理 src-tauri 目录中的旧配置文件
+          # 清理 src-tauri 目录中的旧配置文件（重要：确保使用新的配置）
           if (Test-Path "src-tauri/tauri.conf.json") {
-            $config = Get-Content "src-tauri/tauri.conf.json" | ConvertFrom-Json
-            Write-Host "Current productName: $($config.package.productName)"
+            $oldConfig = Get-Content "src-tauri/tauri.conf.json" | ConvertFrom-Json
+            Write-Host "Old productName in config: $($oldConfig.package.productName)"
+            # 重置为默认配置，确保不会使用旧值
+            $defaultConfig = @{
+              package = @{
+                productName = "PakeApp"
+                version = "1.0.0"
+              }
+              tauri = @{
+                windows = @(@{
+                  url = ""
+                  transparent = $false
+                  fullscreen = $false
+                  width = 1200
+                  height = 780
+                  resizable = $true
+                })
+                security = @{
+                  csp = $null
+                }
+                updater = @{
+                  active = $false
+                }
+                bundle = @{
+                  icon = @()
+                  identifier = "pake-app"
+                  active = $true
+                  category = "DeveloperTool"
+                  copyright = ""
+                  externalBin = @()
+                  longDescription = ""
+                  macOS = @{}
+                  resources = @()
+                  shortDescription = ""
+                  targets = @()
+                }
+              }
+            }
+            $defaultConfig | ConvertTo-Json -Depth 10 | Set-Content "src-tauri/tauri.conf.json"
+            Write-Host "Reset tauri.conf.json to default"
           }
           # 重新构建 CLI
           npm run cli:build
