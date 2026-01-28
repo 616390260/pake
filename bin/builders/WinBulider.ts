@@ -435,21 +435,35 @@ linker = "x86_64-w64-mingw32-gcc"
       
       // 先尝试精确匹配
       let msiFound = await fs.access(msiPath).then(() => true).catch(() => false);
+      logger.info(`精确匹配 MSI 文件: ${msiPath}, 结果: ${msiFound}`);
       
       // 如果精确匹配失败，尝试查找目录中的所有 MSI 文件
       if (!msiFound) {
         try {
-          const files = await fs.readdir(bundleMsiDir);
-          const msiFiles = files.filter(f => f.toLowerCase().endsWith('.msi'));
-          logger.info(`在 bundle/msi 目录找到 ${msiFiles.length} 个 MSI 文件: ${msiFiles.join(', ')}`);
-          if (msiFiles.length > 0) {
-            msiPath = path.join(bundleMsiDir, msiFiles[0]);
-            logger.info(`使用第一个 MSI 文件: ${msiPath}`);
-            msiFound = await fs.access(msiPath).then(() => true).catch(() => false);
+          logger.info(`尝试读取目录: ${bundleMsiDir}`);
+          const dirExists = await fs.access(bundleMsiDir).then(() => true).catch(() => false);
+          logger.info(`目录是否存在: ${dirExists}`);
+          
+          if (dirExists) {
+            const files = await fs.readdir(bundleMsiDir);
+            logger.info(`目录中的文件: ${files.join(', ')}`);
+            const msiFiles = files.filter(f => f.toLowerCase().endsWith('.msi'));
+            logger.info(`在 bundle/msi 目录找到 ${msiFiles.length} 个 MSI 文件: ${msiFiles.join(', ')}`);
+            if (msiFiles.length > 0) {
+              msiPath = path.join(bundleMsiDir, msiFiles[0]);
+              logger.info(`使用第一个 MSI 文件: ${msiPath}`);
+              msiFound = await fs.access(msiPath).then(() => true).catch(() => false);
+              logger.info(`文件访问检查结果: ${msiFound}`);
+            }
+          } else {
+            logger.warn(`目录不存在: ${bundleMsiDir}`);
           }
-        } catch (error) {
-          logger.warn(`无法读取 bundle/msi 目录: ${error}`);
+        } catch (error: any) {
+          logger.error(`无法读取 bundle/msi 目录: ${error?.message || error}`);
           logger.info(`尝试的路径: ${bundleMsiDir}`);
+          // 即使 readdir 失败，也尝试直接访问精确路径
+          logger.info(`最后尝试直接访问: ${msiPath}`);
+          msiFound = await fs.access(msiPath).then(() => true).catch(() => false);
         }
       }
 
