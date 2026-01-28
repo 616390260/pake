@@ -425,12 +425,14 @@ linker = "x86_64-w64-mingw32-gcc"
       logger.success(`安装包已生成: ${distPath}`);
       logger.info('这是一个 .msi 安装包，双击即可安装');
     } else {
-      // 如果没有 msi，尝试查找 exe（使用 productName 作为文件名）
-      // Tauri 使用 productName 作为可执行文件名
-      const exeName = `${name}.exe`;
-      // 也可能在 target/release 目录下，文件名是 productName
+      // 如果没有 msi，尝试查找 exe
+      // 如果使用了英文名称生成 MSI，exe 文件名也是英文名称
+      const exeSearchName = containsNonAscii ? buildProductName : name;
+      const exeName = `${name}.exe`; // 最终输出文件名使用中文名称
+      // 查找可能的 exe 文件位置
       const possibleExePaths = [
-        path.join(npmDirectory, 'src-tauri/target/release', exeName),
+        path.join(npmDirectory, 'src-tauri/target/release', `${exeSearchName}.exe`), // 使用构建时的 productName
+        path.join(npmDirectory, 'src-tauri/target/release', `${name}.exe`), // 使用原始名称
         path.join(npmDirectory, 'src-tauri/target/release', 'app.exe'), // Cargo 默认名称
       ];
       
@@ -442,8 +444,8 @@ linker = "x86_64-w64-mingw32-gcc"
           logger.success('Build success!');
           logger.success(`可执行文件已生成: ${distPath}`);
           logger.warn('⚠️  注意: 只生成了 .exe 文件，而不是 .msi 安装包。');
-          logger.warn('⚠️  .exe 文件是应用程序本身，不是安装包。');
-          logger.warn('⚠️  如果 WiX 工具集未安装，请安装 WiX Toolset 以生成 .msi 安装包。');
+          logger.warn('⚠️  这可能是因为 WiX 工具集配置问题。');
+          logger.warn('⚠️  你可以直接运行 .exe 文件，但建议使用 .msi 安装包以获得更好的安装体验。');
           foundExe = true;
           break;
         }
@@ -455,6 +457,7 @@ linker = "x86_64-w64-mingw32-gcc"
         logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release')}`);
         logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release/bundle/msi')}`);
         logger.info(`  - ${path.join(npmDirectory, 'src-tauri/target/release/bundle')}`);
+        throw new Error('无法找到构建输出文件');
       }
     }
   }
