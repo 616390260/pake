@@ -335,6 +335,27 @@ linker = "x86_64-w64-mingw32-gcc"
       logger.info('已添加 msi 到 Windows 构建目标');
     }
     
+    // 检查 productName 是否包含非 ASCII 字符（如中文）
+    // 如果包含，使用英文名称生成 MSI 文件名，但保持应用内部显示名称为中文
+    const containsNonAscii = /[^\x00-\x7F]/.test(name);
+    let buildProductName = name;
+    let msiFileName = name;
+    
+    if (containsNonAscii) {
+      // 生成一个英文名称用于 MSI 文件名（使用拼音或音译，或简单的英文标识符）
+      // 这里使用一个简单的方案：将中文转换为拼音首字母，或使用一个固定的英文前缀
+      // 为了简单，我们使用 "App" + 时间戳，或者使用 name 的拼音首字母
+      // 但为了保持一致性，我们使用一个基于 name 的哈希值
+      const crypto = require('crypto');
+      const hash = crypto.createHash('md5').update(name).digest('hex').substring(0, 8);
+      buildProductName = `App${hash}`;
+      logger.info(`检测到中文名称 "${name}"，使用英文名称 "${buildProductName}" 生成 MSI 文件名`);
+      logger.info(`应用内部显示名称仍为 "${name}"`);
+      
+      // 临时修改 productName 用于生成 MSI 文件名
+      tauriConf.package.productName = buildProductName;
+    }
+    
     // 验证配置中的名称
     logger.info(`构建配置 - productName: ${tauriConf.package.productName}`);
     logger.info(`构建配置 - name 参数: ${name}`);
@@ -348,8 +369,8 @@ linker = "x86_64-w64-mingw32-gcc"
     
     // 验证文件已正确写入
     const verifyConfig = JSON.parse(await fs.readFile(configJsonPath, 'utf-8'));
-    if (verifyConfig.package.productName !== name) {
-      logger.error(`配置验证失败: productName 应该是 "${name}"，但实际是 "${verifyConfig.package.productName}"`);
+    if (verifyConfig.package.productName !== buildProductName) {
+      logger.error(`配置验证失败: productName 应该是 "${buildProductName}"，但实际是 "${verifyConfig.package.productName}"`);
       throw new Error('配置更新失败');
     }
     logger.info('配置已正确更新并验证');
@@ -360,16 +381,44 @@ linker = "x86_64-w64-mingw32-gcc"
     
     await shellExec(`cd "${npmDirectory}" && npm install && npm run build`);
     
+    // 构建完成后，如果使用了英文名称，需要恢复中文名称并重命名 MSI 文件
+    if (containsNonAscii) {
+      // 恢复 productName 为中文名称
+      tauriConf.package.productName = name;
+      await fs.writeFile(
+        configJsonPath,
+        Buffer.from(JSON.stringify(tauriConf, null, 2), 'utf-8')
+      );
+      logger.info(`已恢复 productName 为 "${name}"`);
+    }
+    
     // 尝试查找 msi 文件（优先）
     const language = tauriConf.tauri.bundle?.windows?.wix?.language?.[0] || 'en-US';
     const arch = process.arch === 'x64' ? 'x64' : process.arch;
-    // 使用 productName 作为文件名（可能包含中文）
-    const msiName = `${name}_${tauriConf.package.version}_${arch}_${language}.msi`;
-    const appPath = this.getBuildAppPath(npmDirectory, msiName);
+    
+    // 如果使用了英文名称生成 MSI，先查找英文名称的 MSI 文件
+    let searchMsiName = containsNonAscii ? `${buildProductName}_${tauriConf.package.version}_${arch}_${language}.msi` : `${name}_${tauriConf.package.version}_${arch}_${language}.msi`;
+    let appPath = this.getBuildAppPath(npmDirectory, searchMsiName);
     
     logger.info(`查找 MSI 文件: ${appPath}`);
     
+    // 如果找不到，尝试在 bundle/msi 目录下查找所有 MSI 文件
+    if (!(await fs.access(appPath).then(() => true).catch(() => false))) {
+      const bundleMsiDir = path.join(npmDirectory, 'src-tauri/target/release/bundle/msi');
+      try {
+        const files = await fs.readdir(bundleMsiDir);
+        const msiFiles = files.filter(f => f.endsWith('.msi'));
+        if (msiFiles.length > 0) {
+          appPath = path.join(bundleMsiDir, msiFiles[0]);
+          logger.info(`在 bundle/msi 目录找到 MSI 文件: ${appPath}`);
+        }
+      } catch (error) {
+        logger.warn('无法读取 bundle/msi 目录');
+      }
+    }
+    
     if (await fs.access(appPath).then(() => true).catch(() => false)) {
+      // 使用原始的中文名称作为最终文件名
       const distPath = path.resolve(`${name}.msi`);
       await fs.copyFile(appPath, distPath);
       logger.success('Build success!');
