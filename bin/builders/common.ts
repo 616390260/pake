@@ -2,6 +2,7 @@ import { PakeAppOptions } from '@/types.js';
 import prompts from 'prompts';
 import path from 'path';
 import fs from 'fs/promises';
+import crypto from 'crypto';
 import { npmDirectory } from '@/utils/dir.js';
 import logger from '@/options/logger.js';
 
