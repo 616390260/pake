@@ -159,13 +159,14 @@ jobs:
       if: matrix.os == 'windows-latest' && inputs.build_single == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: windows-single-installer
+        name: windows-single-installer-${{ inputs.name }}-${{ github.run_number }}
         path: |
           *.msi
           *.exe
           src-tauri/target/release/bundle/msi/*.msi
           src-tauri/target/release/*.exe
         if-no-files-found: warn
+        retention-days: 7
 
     - name: Upload artifact (batch build)
       if: inputs.build_single != 'true'
