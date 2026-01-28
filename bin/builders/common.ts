@@ -72,6 +72,17 @@ export async function mergeTauriConfig(
   const isCrossCompilingWindows = process.env.PAKE_TARGET_PLATFORM === 'win' || 
                                    (process.platform !== 'win32' && tauriConf.tauri?.bundle?.targets?.includes('msi') === false);
   
+  // 对于 Windows，如果名称包含非 ASCII 字符，使用英文名称作为图标文件名（避免 WiX 处理中文路径失败）
+  // 注意：这里需要和 WinBulider.ts 中的 buildProductName 逻辑保持一致
+  const containsNonAscii = /[^\x00-\x7F]/.test(name);
+  let iconFileName = name.toLowerCase();
+  if (containsNonAscii && (process.platform === "win32" || isCrossCompilingWindows)) {
+    // 使用和 WinBulider 相同的哈希逻辑生成英文图标文件名
+    const hash = crypto.createHash('md5').update(name).digest('hex').substring(0, 8);
+    iconFileName = `app${hash}`;
+    logger.info(`检测到中文名称，图标文件名使用英文: ${iconFileName}`);
+  }
+  
   if (exists) {
     let updateIconPath = true;
     let customIconExt = path.extname(options.icon).toLowerCase();
@@ -79,17 +90,17 @@ export async function mergeTauriConfig(
     // Windows 平台或交叉编译 Windows
     if (process.platform === "win32" || isCrossCompilingWindows) {
       if (customIconExt === ".ico") {
-        // 复制图标到 png 目录
-        const ico_32_path = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_32.ico`);
-        const ico_256_path = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_256.ico`);
+        // 复制图标到 png 目录，使用英文文件名（如果名称包含中文）
+        const ico_32_path = path.join(npmDirectory, `src-tauri/png/${iconFileName}_32.ico`);
+        const ico_256_path = path.join(npmDirectory, `src-tauri/png/${iconFileName}_256.ico`);
         await fs.copyFile(options.icon, ico_32_path).catch(() => {});
         await fs.copyFile(options.icon, ico_256_path).catch(() => {});
-        // 设置 Windows 图标配置
+        // 设置 Windows 图标配置，使用相对路径（避免路径问题）
         tauriConf.tauri.bundle.icon = [
-          `png/${name.toLowerCase()}_256.ico`,
-          `png/${name.toLowerCase()}_32.ico`
+          `png/${iconFileName}_256.ico`,
+          `png/${iconFileName}_32.ico`
         ];
-        tauriConf.tauri.bundle.resources = [`png/${name.toLowerCase()}_32.ico`];
+        tauriConf.tauri.bundle.resources = [`png/${iconFileName}_32.ico`];
       } else {
         updateIconPath = false;
         logger.warn(`icon file in Windows must be 256 * 256 pix with .ico type, but you give ${customIconExt}`);
@@ -124,17 +135,17 @@ export async function mergeTauriConfig(
       const defaultExists256 = await fs.stat(defaultIcon256).then(() => true).catch(() => false);
       
       if (defaultExists32 && defaultExists256) {
-        // 复制默认图标到应用名称
-        const appIcon32 = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_32.ico`);
-        const appIcon256 = path.join(npmDirectory, `src-tauri/png/${name.toLowerCase()}_256.ico`);
+        // 复制默认图标到应用名称（如果名称包含中文，使用英文文件名）
+        const appIcon32 = path.join(npmDirectory, `src-tauri/png/${iconFileName}_32.ico`);
+        const appIcon256 = path.join(npmDirectory, `src-tauri/png/${iconFileName}_256.ico`);
         await fs.copyFile(defaultIcon32, appIcon32).catch(() => {});
         await fs.copyFile(defaultIcon256, appIcon256).catch(() => {});
         tauriConf.tauri.bundle.icon = [
-          `png/${name.toLowerCase()}_256.ico`,
-          `png/${name.toLowerCase()}_32.ico`
+          `png/${iconFileName}_256.ico`,
+          `png/${iconFileName}_32.ico`
         ];
-        tauriConf.tauri.bundle.resources = [`png/${name.toLowerCase()}_32.ico`];
-        logger.info(`Using default icon for Windows app: ${name}`);
+        tauriConf.tauri.bundle.resources = [`png/${iconFileName}_32.ico`];
+        logger.info(`Using default icon for Windows app: ${name} (icon file: ${iconFileName})`);
       } else {
         logger.warn("Default icon files not found, app will use system default icon");
       }
