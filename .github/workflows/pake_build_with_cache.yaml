@@ -51,7 +51,9 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # 获取完整历史，确保使用最新代码
 
     - name: install node
       uses: actions/setup-node@v1
@@ -104,10 +106,25 @@ jobs:
         if ("${{ inputs.build_single }}" -eq "true" -and "${{ inputs.url }}" -ne "" -and "${{ inputs.name }}" -ne "") {
           # 构建单个 Windows 应用
           Write-Host "Building single Windows app: ${{ inputs.name }}"
-          # 先删除旧的构建文件，确保使用最新代码构建
+          Write-Host "URL: ${{ inputs.url }}"
+          Write-Host "Name: ${{ inputs.name }}"
+          # 清理旧的构建文件和缓存
           Remove-Item -Force -ErrorAction SilentlyContinue dist/cli.js
+          Remove-Item -Force -ErrorAction SilentlyContinue *.msi
+          Remove-Item -Force -ErrorAction SilentlyContinue *.exe
+          # 清理 src-tauri 目录中的旧配置文件
+          if (Test-Path "src-tauri/tauri.conf.json") {
+            $config = Get-Content "src-tauri/tauri.conf.json" | ConvertFrom-Json
+            Write-Host "Current productName: $($config.package.productName)"
+          }
+          # 重新构建 CLI
           npm run cli:build
+          # 构建应用
           node cli.js "${{ inputs.url }}" --name "${{ inputs.name }}" --target win
+          # 验证生成的文件
+          Write-Host "`n=== Generated files ==="
+          Get-ChildItem -Filter "*.msi" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "MSI: $($_.Name) - Size: $($_.Length) bytes" }
+          Get-ChildItem -Filter "*.exe" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "EXE: $($_.Name) - Size: $($_.Length) bytes" }
         } else {
           # 构建所有应用
           npm run build:all-windows
