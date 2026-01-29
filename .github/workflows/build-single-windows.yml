@@ -60,6 +60,16 @@ jobs:
       if: inputs.icon != ''
       run: |
         $iconUrl = "${{ inputs.icon }}"
+        Write-Host "Icon URL: $iconUrl"
+        
+        # 检查 URL 是否完整
+        if (-not $iconUrl.StartsWith("http://") -and -not $iconUrl.StartsWith("https://")) {
+          Write-Host "警告: 图标 URL 不完整，缺少协议（http:// 或 https://）"
+          Write-Host "将跳过图标下载，使用默认图标"
+          echo "ICON_PATH=" >> $env:GITHUB_ENV
+          exit 0
+        }
+        
         if ($iconUrl.ToLower().EndsWith(".ico")) {
           Write-Host "Icon is already .ico, using directly"
           echo "ICON_PATH=$iconUrl" >> $env:GITHUB_ENV
@@ -70,12 +80,27 @@ jobs:
           $inputFile = "$tempDir\icon_input"
           $outputFile = "$tempDir\icon.ico"
           
-          Invoke-WebRequest -Uri $iconUrl -OutFile $inputFile -UseBasicParsing
-          python -m pip install Pillow --quiet
-          python -c "from PIL import Image; img = Image.open(r'$inputFile').convert('RGBA').resize((256, 256)); img.save(r'$outputFile', format='ICO')"
-          
-          echo "ICON_PATH=$outputFile" >> $env:GITHUB_ENV
-          Write-Host "Icon converted: $outputFile"
+          try {
+            Write-Host "Downloading icon from: $iconUrl"
+            Invoke-WebRequest -Uri $iconUrl -OutFile $inputFile -UseBasicParsing -ErrorAction Stop
+            Write-Host "Icon downloaded successfully"
+            
+            Write-Host "Converting to .ico format..."
+            python -m pip install Pillow --quiet
+            python -c "from PIL import Image; img = Image.open(r'$inputFile').convert('RGBA').resize((256, 256)); img.save(r'$outputFile', format='ICO')"
+            
+            if (Test-Path $outputFile) {
+              echo "ICON_PATH=$outputFile" >> $env:GITHUB_ENV
+              Write-Host "Icon converted successfully: $outputFile"
+            } else {
+              Write-Host "警告: 图标转换失败，将使用默认图标"
+              echo "ICON_PATH=" >> $env:GITHUB_ENV
+            }
+          } catch {
+            Write-Host "错误: 无法下载图标: $_"
+            Write-Host "将使用默认图标继续构建"
+            echo "ICON_PATH=" >> $env:GITHUB_ENV
+          }
         }
 
     - name: Build Windows app
