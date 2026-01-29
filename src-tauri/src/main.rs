@@ -113,10 +113,7 @@ fn main() -> wry::Result<()> {
             // 如果 package_name 包含非 ASCII 字符，生成英文哈希名称
             let has_non_ascii = package_name.chars().any(|c| c as u32 > 127);
             if has_non_ascii {
-                use md5::{Md5, Digest};
-                let mut hasher = Md5::new();
-                hasher.update(package_name.as_bytes());
-                let hash = hasher.finalize();
+                let hash = md5::compute(package_name.as_bytes());
                 let hash_hex = format!("{:x}", hash);
                 let hash_prefix = &hash_hex[..8.min(hash_hex.len())];
                 icon_path = format!("png/app{}_32.ico", hash_prefix);
