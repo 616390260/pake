@@ -418,17 +418,72 @@ linker = "x86_64-w64-mingw32-gcc"
           const escapedMsiPath = msiPath.replace(/\\/g, '\\\\').replace(/'/g, "''");
           const escapedProductName = name.replace(/'/g, "''").replace(/"/g, '\\"');
           
-          const psScript = `$msiPath = '${escapedMsiPath}'; $newProductName = '${escapedProductName}'; try { $wi = New-Object -ComObject WindowsInstaller.Installer; $database = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msiPath, 0)); $view = $database.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $database, \"UPDATE Property SET Value='$newProductName' WHERE Property='ProductName'\"); $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null); $view.GetType().InvokeMember('Close', 'InvokeMethod', $null, $view, $null); $database.GetType().InvokeMember('Commit', 'InvokeMethod', $null, $database, $null); Write-Host 'MSI ProductName 已更新为: $newProductName' } catch { Write-Host \"警告: 无法修改 MSI ProductName: $_\" }`;
+          logger.info(`正在修改 MSI 文件内部的 ProductName: "${buildProductName}" -> "${name}"`);
+          
+          // 使用更健壮的 PowerShell 脚本，包含验证步骤
+          const psScript = `
+$msiPath = '${escapedMsiPath}'
+$newProductName = '${escapedProductName}'
+$oldProductName = '${buildProductName}'
+
+try {
+  Write-Host "打开 MSI 文件: $msiPath"
+  $wi = New-Object -ComObject WindowsInstaller.Installer
+  $database = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msiPath, 0))
+  
+  Write-Host "读取当前 ProductName..."
+  $view = $database.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $database, "SELECT Value FROM Property WHERE Property='ProductName'")
+  $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+  $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+  if ($record) {
+    $currentValue = $record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1)
+    Write-Host "当前 ProductName: $currentValue"
+  }
+  $view.GetType().InvokeMember('Close', 'InvokeMethod', $null, $view, $null)
+  
+  Write-Host "更新 ProductName 为: $newProductName"
+  $view = $database.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $database, "UPDATE Property SET Value='$newProductName' WHERE Property='ProductName'")
+  $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+  $view.GetType().InvokeMember('Close', 'InvokeMethod', $null, $view, $null)
+  
+  Write-Host "提交更改..."
+  $database.GetType().InvokeMember('Commit', 'InvokeMethod', $null, $database, $null)
+  
+  Write-Host "验证更改..."
+  $view = $database.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $database, "SELECT Value FROM Property WHERE Property='ProductName'")
+  $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+  $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+  if ($record) {
+    $newValue = $record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1)
+    Write-Host "新的 ProductName: $newValue"
+    if ($newValue -eq $newProductName) {
+      Write-Host "✓ MSI ProductName 已成功更新为: $newProductName"
+      exit 0
+    } else {
+      Write-Host "✗ 验证失败: 期望 '$newProductName'，实际 '$newValue'"
+      exit 1
+    }
+  }
+  $view.GetType().InvokeMember('Close', 'InvokeMethod', $null, $view, $null)
+} catch {
+  Write-Host "错误: 无法修改 MSI ProductName: $_"
+  Write-Host $_.Exception.Message
+  exit 1
+}
+`.trim();
           
           try {
-            await shellExec(`powershell -Command "${psScript}"`);
-            logger.success('MSI 文件内部的 ProductName 已更新为中文名称');
+            const result = await shellExec(`powershell -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`);
+            logger.success(`MSI 文件内部的 ProductName 已成功更新为: "${name}"`);
+            logger.info('安装后的软件名称将是: ' + name);
           } catch (error: any) {
-            logger.warn(`无法修改 MSI 文件内部的 ProductName: ${error?.message || error}`);
-            logger.warn('安装后的软件名称可能仍为英文名称');
+            logger.error(`无法修改 MSI 文件内部的 ProductName: ${error?.message || error}`);
+            logger.warn('⚠️  警告: 安装后的软件名称可能仍为英文名称（' + buildProductName + '）');
+            logger.warn('如果出现此问题，请检查 PowerShell 执行权限或 WindowsInstaller COM 对象是否可用');
           }
         } else {
           logger.warn('非 Windows 系统，无法修改 MSI 文件内部的 ProductName');
+          logger.warn('⚠️  警告: 安装后的软件名称可能仍为英文名称（' + buildProductName + '）');
         }
       }
     }
