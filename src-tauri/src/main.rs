@@ -78,7 +78,7 @@ fn main() -> wry::Result<()> {
             .expect("can't get package name in config file")
             .to_lowercase();
         let config = windows_config.unwrap_or_default();
-        println!("配置读取成功: package_name={}, url={}", package_name, config.url.as_deref().unwrap_or("(无)"));
+        println!("配置读取成功: package_name={}, url={}", package_name, config.url.to_string());
         (package_name, config)
     };
 
@@ -201,11 +201,11 @@ fn main() -> wry::Result<()> {
     #[cfg(target_os = "macos")]
     let webview = {
         let user_agent_string = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15";
-        let url_str = url.as_deref().unwrap_or("about:blank");
+        let url_str = url.to_string();
         println!("正在加载 URL: {}", url_str);
         WebViewBuilder::new(window)?
             .with_user_agent(user_agent_string)
-            .with_url(url_str)?
+            .with_url(&url_str)?
             .with_devtools(cfg!(feature = "devtools"))
             .with_initialization_script(include_str!("pake.js"))
             .with_ipc_handler(handler)
@@ -234,11 +234,11 @@ fn main() -> wry::Result<()> {
         let user_agent_string = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36";
         #[cfg(target_os = "linux")]
         let user_agent_string = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36";
-        let url_str = url.as_deref().unwrap_or("about:blank");
+        let url_str = url.to_string();
         println!("正在加载 URL: {}", url_str);
         WebViewBuilder::new(window)?
             .with_user_agent(user_agent_string)
-            .with_url(url_str)?
+            .with_url(&url_str)?
             .with_devtools(cfg!(feature = "devtools"))
             .with_initialization_script(include_str!("pake.js"))
             .with_ipc_handler(handler)
