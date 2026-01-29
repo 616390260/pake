@@ -107,7 +107,6 @@ fn main() -> wry::Result<()> {
         let (package_name, windows_config) = match std::panic::catch_unwind(|| get_windows_config()) {
             Ok(result) => result,
             Err(e) => {
-                println!("错误: 读取配置文件时发生 panic: {:?}", e);
                 eprintln!("错误: 读取配置文件时发生 panic: {:?}", e);
                 std::process::exit(1);
             }
@@ -115,7 +114,6 @@ fn main() -> wry::Result<()> {
         let package_name = match package_name {
             Some(name) => name.to_lowercase(),
             None => {
-                println!("错误: 配置文件中没有 package name");
                 eprintln!("错误: 配置文件中没有 package name");
                 std::process::exit(1);
             }
