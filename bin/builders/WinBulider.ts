@@ -346,7 +346,8 @@ linker = "x86_64-w64-mingw32-gcc"
     // 保持 productName 为原始名称（包括中文），确保安装后的软件名称正确
     // 只在使用 hash 名称查找和重命名 MSI 文件时使用英文名称
     const containsNonAscii = /[^\x00-\x7F]/.test(name);
-    let msiSearchName = name; // 用于查找 MSI 文件的名称
+    // 用于查找 MSI 文件的名称（如果是中文，WiX 可能会生成英文文件名）
+    let msiSearchName = name;
     
     if (containsNonAscii) {
       // 生成一个英文名称用于查找 MSI 文件名（WiX 可能会生成英文文件名）
@@ -355,6 +356,9 @@ linker = "x86_64-w64-mingw32-gcc"
       logger.info(`检测到中文名称 "${name}"，将使用英文名称 "${msiSearchName}" 查找 MSI 文件`);
       logger.info(`应用内部显示名称保持为 "${name}"`);
     }
+    
+    // 保存 msiSearchName 到变量，以便后续查找 MSI 文件时使用
+    const msiFileNameForSearch = msiSearchName;
     
     // 验证配置中的名称（保持为中文）
     logger.info(`构建配置 - productName: ${tauriConf.package.productName}`);
@@ -415,7 +419,7 @@ linker = "x86_64-w64-mingw32-gcc"
       const language = tauriConf.tauri.bundle?.windows?.wix?.language?.[0] || 'en-US';
       const arch = process.arch === 'x64' ? 'x64' : process.arch;
       const searchMsiName = containsNonAscii
-        ? `${buildProductName}_${tauriConf.package.version}_${arch}_${language}.msi`
+        ? `${msiFileNameForSearch}_${tauriConf.package.version}_${arch}_${language}.msi`
         : `${name}_${tauriConf.package.version}_${arch}_${language}.msi`;
       let msiPath = path.join(bundleMsiDir, searchMsiName);
 
