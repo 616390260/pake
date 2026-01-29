@@ -124,30 +124,14 @@ jobs:
             & node cli.js $args
             if ($LASTEXITCODE -eq 0) {
               $buildSuccess = $true
-              Write-Host "构建成功，退出码: $LASTEXITCODE"
-              # 如果构建成功，检查是否生成了安装包（在工作目录根目录或 bundle 目录）
-              $rootMsiFiles = Get-ChildItem -Filter "*.msi" -ErrorAction SilentlyContinue
-              $rootNsisFiles = Get-ChildItem -Filter "*setup.exe" -ErrorAction SilentlyContinue
-              $bundleMsiFiles = Get-ChildItem -Recurse -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\msi\*" }
-              $bundleNsisFiles = Get-ChildItem -Recurse -Filter "*setup.exe" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\nsis\*" -and $_.Name -like "*setup*" }
-              
-              if ($rootMsiFiles -or $rootNsisFiles -or $bundleMsiFiles -or $bundleNsisFiles) {
-                Write-Host "找到安装包，停止后续尝试"
-                break
-              }
+              Write-Host "构建成功，退出码: $LASTEXITCODE，停止后续尝试"
+              # 如果构建成功（退出码为 0），说明已经生成了安装包，直接退出循环
+              break
+            } else {
+              Write-Host "构建失败，退出码: $LASTEXITCODE，继续下一个尝试"
             }
           } catch {
-            Write-Host "Build attempt failed: $attempt"
-          }
-
-          # 如果本次已经产出了安装包，就不再继续下一次尝试
-          $rootMsiFiles = Get-ChildItem -Filter "*.msi" -ErrorAction SilentlyContinue
-          $rootNsisFiles = Get-ChildItem -Filter "*setup.exe" -ErrorAction SilentlyContinue
-          $bundleMsiFiles = Get-ChildItem -Recurse -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\msi\*" }
-          $bundleNsisFiles = Get-ChildItem -Recurse -Filter "*setup.exe" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\nsis\*" -and $_.Name -like "*setup*" }
-          if ($rootMsiFiles -or $rootNsisFiles -or $bundleMsiFiles -or $bundleNsisFiles) {
-            Write-Host "找到安装包，停止后续尝试"
-            break
+            Write-Host "Build attempt failed: $attempt，继续下一个尝试"
           }
         }
         
