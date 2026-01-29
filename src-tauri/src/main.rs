@@ -105,11 +105,29 @@ fn main() -> wry::Result<()> {
 
     #[cfg(target_os = "windows")]
     let window = {
+        // 尝试查找图标文件，支持中文名称和英文哈希名称
         let mut icon_path = format!("png/{}_32.ico", package_name);
-        // If there is no setting, use the default one.
+        
+        // 如果使用中文名称找不到图标，尝试使用英文哈希名称（和 JavaScript 相同的 MD5 逻辑）
+        if !std::path::Path::new(&icon_path).exists() {
+            // 如果 package_name 包含非 ASCII 字符，生成英文哈希名称
+            let has_non_ascii = package_name.chars().any(|c| c as u32 > 127);
+            if has_non_ascii {
+                use md5::{Md5, Digest};
+                let mut hasher = Md5::new();
+                hasher.update(package_name.as_bytes());
+                let hash = hasher.finalize();
+                let hash_hex = format!("{:x}", hash);
+                let hash_prefix = &hash_hex[..8.min(hash_hex.len())];
+                icon_path = format!("png/app{}_32.ico", hash_prefix);
+            }
+        }
+        
+        // 如果还是找不到，使用默认图标
         if !std::path::Path::new(&icon_path).exists() {
             icon_path = "png/icon_32.ico".to_string();
         }
+        
         let icon = load_icon(std::path::Path::new(&icon_path));
         common_window
             .with_decorations(true)
