@@ -333,7 +333,7 @@ linker = "x86_64-w64-mingw32-gcc"
     const installerTypeEnv = process.env.PAKE_WINDOWS_INSTALLER;
     logger.info(`环境变量 PAKE_WINDOWS_INSTALLER: ${installerTypeEnv || '(未设置)'}`);
     const installerType = (installerTypeEnv || 'nsis').toLowerCase();
-    const targetBundle = installerType === 'msi' ? 'msi' : 'nsis';
+    let targetBundle: 'msi' | 'nsis' = installerType === 'msi' ? 'msi' : 'nsis';
     logger.info(`选择的安装包类型: ${installerType}, targetBundle: ${targetBundle}`);
 
     if (!tauriConf.tauri?.bundle?.targets || tauriConf.tauri.bundle.targets.length === 0) {
@@ -343,22 +343,15 @@ linker = "x86_64-w64-mingw32-gcc"
     }
     logger.info(`已设置 Windows 构建目标为 ${targetBundle}`);
     
-    // 处理中文名称：WiX 的 light.exe 无法处理包含中文的 MSI 输出文件名
-    // 方案：保持 productName 为中文（这样 MSI 内部的 ProductName 就是中文）
-    //       通过设置 WiX 的输出文件名环境变量来避免 light.exe 失败
     const containsNonAscii = /[^\x00-\x7F]/.test(name);
-    let msiFileNameForSearch = name;
-    
-    if (containsNonAscii) {
-      // 生成一个英文名称用于 MSI 文件名（避免 light.exe 失败）
-      const hash = crypto.createHash('md5').update(name).digest('hex').substring(0, 8);
-      msiFileNameForSearch = `App${hash}`;
-      logger.info(`检测到中文名称 "${name}"，将使用英文文件名 "${msiFileNameForSearch}.msi"（避免 WiX light.exe 失败）`);
-      logger.info(`MSI 文件内部的 ProductName 将保持为中文 "${name}"`);
-      
-      // 设置环境变量，让 Tauri 使用英文文件名
-      // 注意：这需要 Tauri 支持，如果不支持，我们会在构建后重命名文件
-      process.env.TAURI_MSI_OUTPUT_NAME = msiFileNameForSearch;
+    // WiX(light.exe) 在 CI 上经常因为中文路径/文件名失败；NSIS 不依赖 WiX，且对中文更友好
+    // 规则：如果 name 含中文且用户选择 msi，则默认直接切到 nsis（除非强制）
+    const forceMsi = process.env.PAKE_FORCE_MSI === '1';
+    if (containsNonAscii && targetBundle === 'msi' && !forceMsi) {
+      logger.warn(`检测到中文名称 "${name}"，MSI 依赖 WiX 在 CI 上容易失败，已自动切换为 NSIS（可安装 exe）`);
+      logger.warn('如必须使用 MSI，请设置环境变量 PAKE_FORCE_MSI=1（不保证成功）');
+      targetBundle = 'nsis';
+      tauriConf.tauri.bundle.targets = [targetBundle];
     }
     
     // 保持 productName 为中文（这样 MSI 内部的 ProductName 就是中文）
@@ -384,9 +377,11 @@ linker = "x86_64-w64-mingw32-gcc"
     logger.info('配置已正确更新并验证');
     logger.info(`✓ productName 已设置为中文: "${name}"，MSI 内部的 ProductName 将自动使用此值`);
 
-    // 尝试构建，如果因为中文文件名失败，会自动回退到 NSIS
+    // 构建：显式指定 bundles，避免“回退到 nsis 但仍在跑 wix(msi)”的情况
     try {
-      await shellExec(`cd "${npmDirectory}" && npm install && npm run build`);
+      const buildCmd = `cd "${npmDirectory}" && npm install && npm run tauri -- build --release --bundles ${targetBundle}`;
+      logger.info(`Running: ${buildCmd}`);
+      await shellExec(buildCmd);
     } catch (error: any) {
       // 如果构建失败且是因为 MSI 文件名包含中文，尝试回退到 NSIS
       if (targetBundle === 'msi' && containsNonAscii) {
@@ -397,9 +392,10 @@ linker = "x86_64-w64-mingw32-gcc"
           Buffer.from(JSON.stringify(tauriConf, null, 2), 'utf-8')
         );
         logger.info('已切换到 NSIS 构建目标');
-        await shellExec(`cd "${npmDirectory}" && npm run build`);
-        // 更新 targetBundle 以便后续查找逻辑正确
         targetBundle = 'nsis';
+        const buildCmd = `cd "${npmDirectory}" && npm run tauri -- build --release --bundles nsis`;
+        logger.info(`Running: ${buildCmd}`);
+        await shellExec(buildCmd);
       } else {
         throw error;
       }
