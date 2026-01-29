@@ -190,7 +190,11 @@ fn main() -> wry::Result<()> {
     };
 
     #[cfg(target_os = "linux")]
-    let window = common_window.build(&event_loop).unwrap();
+    let window = common_window.build(&event_loop)
+        .map_err(|e| {
+            eprintln!("错误: 无法创建窗口: {:?}", e);
+            wry::Error::Init(format!("无法创建窗口: {:?}", e))
+        })?;
 
     #[cfg(target_os = "macos")]
     let window = common_window
@@ -200,7 +204,10 @@ fn main() -> wry::Result<()> {
         .with_title_hidden(true)
         .with_menu(menu_bar_menu)
         .build(&event_loop)
-        .unwrap();
+        .map_err(|e| {
+            eprintln!("错误: 无法创建窗口: {:?}", e);
+            wry::Error::Init(format!("无法创建窗口: {:?}", e))
+        })?;
 
     // Handling events of JS -> Rust
     let handler = move |window: &Window, req: String| {
@@ -211,7 +218,9 @@ fn main() -> wry::Result<()> {
             window.set_maximized(!is_maximized);
         } else if req.starts_with("open_browser") {
             let href = req.replace("open_browser:", "");
-            webbrowser::open(&href).expect("no browser");
+            if let Err(e) = webbrowser::open(&href) {
+                eprintln!("警告: 无法打开浏览器: {:?}", e);
+            }
         }
     };
 
@@ -219,7 +228,10 @@ fn main() -> wry::Result<()> {
         let proxy = proxy.clone();
         move |uri: String, default_path: &mut PathBuf| {
             let path = download_dir()
-                .unwrap()
+                .map_err(|e| {
+                    eprintln!("错误: 无法创建图标: {:?}", e);
+                    wry::Error::Init(format!("无法创建图标: {:?}", e))
+                })?
                 .join(default_path.display().to_string())
                 .as_path()
                 .to_path_buf();
@@ -336,7 +348,14 @@ fn main() -> wry::Result<()> {
 
 fn get_windows_config() -> (Option<String>, Option<WindowConfig>) {
     let config_file = include_str!("../tauri.conf.json");
-    let config: Config = serde_json::from_str(config_file).expect("failed to parse windows config");
+    let config: Config = match serde_json::from_str(config_file) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("错误: 无法解析配置文件: {:?}", e);
+            eprintln!("配置文件内容: {}", config_file);
+            return (None, None);
+        }
+    };
     (
         config.package.product_name.clone(),
         config.tauri.windows.first().cloned(),
