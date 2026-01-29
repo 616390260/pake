@@ -379,7 +379,7 @@ linker = "x86_64-w64-mingw32-gcc"
 
     // 构建：显式指定 bundles，避免“回退到 nsis 但仍在跑 wix(msi)”的情况
     try {
-      const buildCmd = `cd "${npmDirectory}" && npm install && npm run tauri -- build --release --bundles ${targetBundle}`;
+      const buildCmd = `cd "${npmDirectory}" && npm install && npm run tauri -- build --bundles ${targetBundle}`;
       logger.info(`Running: ${buildCmd}`);
       await shellExec(buildCmd);
     } catch (error: any) {
@@ -393,7 +393,7 @@ linker = "x86_64-w64-mingw32-gcc"
         );
         logger.info('已切换到 NSIS 构建目标');
         targetBundle = 'nsis';
-        const buildCmd = `cd "${npmDirectory}" && npm run tauri -- build --release --bundles nsis`;
+        const buildCmd = `cd "${npmDirectory}" && npm run tauri -- build --bundles nsis`;
         logger.info(`Running: ${buildCmd}`);
         await shellExec(buildCmd);
       } else {
