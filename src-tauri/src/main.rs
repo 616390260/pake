@@ -201,9 +201,11 @@ fn main() -> wry::Result<()> {
     #[cfg(target_os = "macos")]
     let webview = {
         let user_agent_string = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15";
+        let url_str = url.as_deref().unwrap_or("about:blank");
+        println!("正在加载 URL: {}", url_str);
         WebViewBuilder::new(window)?
             .with_user_agent(user_agent_string)
-            .with_url(&url.to_string())?
+            .with_url(url_str)?
             .with_devtools(cfg!(feature = "devtools"))
             .with_initialization_script(include_str!("pake.js"))
             .with_ipc_handler(handler)
