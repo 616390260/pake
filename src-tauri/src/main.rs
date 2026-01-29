@@ -1,5 +1,6 @@
 // at the top of main.rs - that will prevent the console from showing
-#![windows_subsystem = "windows"]
+// 临时注释掉以显示错误信息，生产环境可以恢复
+// #![windows_subsystem = "windows"]
 extern crate image;
 use tauri_utils::config::{Config, WindowConfig};
 use wry::{
@@ -71,13 +72,14 @@ fn main() -> wry::Result<()> {
             ..
         },
     ) = {
+        println!("正在读取配置文件...");
         let (package_name, windows_config) = get_windows_config();
-        (
-            package_name
-                .expect("can't get package name in config file")
-                .to_lowercase(),
-            windows_config.unwrap_or_default(),
-        )
+        let package_name = package_name
+            .expect("can't get package name in config file")
+            .to_lowercase();
+        let config = windows_config.unwrap_or_default();
+        println!("配置读取成功: package_name={}, url={}", package_name, config.url.as_deref().unwrap_or("(无)"));
+        (package_name, config)
     };
 
     #[cfg(target_os = "macos")]
@@ -125,12 +127,27 @@ fn main() -> wry::Result<()> {
             icon_path = "png/icon_32.ico".to_string();
         }
         
-        let icon = load_icon(std::path::Path::new(&icon_path));
-        common_window
-            .with_decorations(true)
-            .with_window_icon(Some(icon))
-            .build(&event_loop)
-            .unwrap()
+        println!("尝试加载图标: {}", icon_path);
+        let icon = match load_icon(std::path::Path::new(&icon_path)) {
+            Ok(icon) => {
+                println!("图标加载成功: {}", icon_path);
+                Some(icon)
+            }
+            Err(e) => {
+                println!("警告: 无法加载图标 {}: {:?}，使用默认图标", icon_path, e);
+                None
+            }
+        };
+        let mut window_builder = common_window.with_decorations(true);
+        if let Some(icon) = icon {
+            window_builder = window_builder.with_window_icon(Some(icon));
+        }
+        println!("正在创建窗口...");
+        window_builder.build(&event_loop)
+            .map_err(|e| {
+                println!("错误: 无法创建窗口: {:?}", e);
+                e
+            })?
     };
 
     #[cfg(target_os = "linux")]
@@ -215,9 +232,11 @@ fn main() -> wry::Result<()> {
         let user_agent_string = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36";
         #[cfg(target_os = "linux")]
         let user_agent_string = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36";
+        let url_str = url.as_deref().unwrap_or("about:blank");
+        println!("正在加载 URL: {}", url_str);
         WebViewBuilder::new(window)?
             .with_user_agent(user_agent_string)
-            .with_url(&url.to_string())?
+            .with_url(url_str)?
             .with_devtools(cfg!(feature = "devtools"))
             .with_initialization_script(include_str!("pake.js"))
             .with_ipc_handler(handler)
@@ -278,15 +297,14 @@ fn get_windows_config() -> (Option<String>, Option<WindowConfig>) {
 }
 
 #[cfg(target_os = "windows")]
-fn load_icon(path: &std::path::Path) -> Icon {
-    let (icon_rgba, icon_width, icon_height) = {
-        // alternatively, you can embed the icon in the binary through `include_bytes!` macro and use `image::load_from_memory`
-        let image = image::open(path)
-            .expect("Failed to open icon path")
-            .into_rgba8();
-        let (width, height) = image.dimensions();
-        let rgba = image.into_raw();
-        (rgba, width, height)
+fn load_icon(path: &std::path::Path) -> Result<Icon, String> {
+    let image = match image::open(path) {
+        Ok(img) => img,
+        Err(e) => return Err(format!("无法打开图标文件 {}: {:?}", path.display(), e)),
     };
-    Icon::from_rgba(icon_rgba, icon_width, icon_height).expect("Failed to open icon")
+    let rgba_image = image.into_rgba8();
+    let (width, height) = rgba_image.dimensions();
+    let rgba = rgba_image.into_raw();
+    Icon::from_rgba(rgba, width, height)
+        .map_err(|e| format!("无法创建图标: {:?}", e))
 }
