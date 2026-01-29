@@ -283,8 +283,15 @@ fn main() -> wry::Result<()> {
         #[cfg(target_os = "linux")]
         let data_dir = home_dir.join(".config").join(package_name);
         if !data_dir.exists() {
-            std::fs::create_dir(&data_dir)
-                .unwrap_or_else(|_| panic!("can't create dir {}", data_dir.display()));
+            println!("创建数据目录: {}", data_dir.display());
+            if let Err(e) = std::fs::create_dir_all(&data_dir) {
+                eprintln!("警告: 无法创建数据目录 {}: {:?}", data_dir.display(), e);
+                // 继续执行，不因为目录创建失败而退出
+            } else {
+                println!("数据目录创建成功");
+            }
+        } else {
+            println!("数据目录已存在: {}", data_dir.display());
         }
         let mut web_content = WebContext::new(Some(data_dir));
         #[cfg(target_os = "windows")]
