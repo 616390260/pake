@@ -400,7 +400,9 @@ linker = "x86_64-w64-mingw32-gcc"
     }
     
     // 根据目标查找安装包
+    logger.info(`开始查找安装包，targetBundle: ${targetBundle}`);
     if (targetBundle === 'nsis') {
+      logger.info('查找 NSIS 安装包...');
       const bundleNsisDir = path.join(npmDirectory, 'src-tauri/target/release/bundle/nsis');
       let installerPath: string | undefined;
       try {
@@ -426,6 +428,7 @@ linker = "x86_64-w64-mingw32-gcc"
       }
     } else {
       // msi
+      logger.info('查找 MSI 安装包...');
       const bundleMsiDir = path.join(npmDirectory, 'src-tauri/target/release/bundle/msi');
       const language = tauriConf.tauri.bundle?.windows?.wix?.language?.[0] || 'en-US';
       const arch = process.arch === 'x64' ? 'x64' : process.arch;
