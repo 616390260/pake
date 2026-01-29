@@ -35,7 +35,7 @@ enum UserEvent {
     DownloadComplete(#[allow(dead_code)] Option<PathBuf>, bool), // path 字段保留用于未来扩展
 }
 
-fn main() -> wry::Result<()> {
+fn main() {
     // 设置 panic hook，捕获 panic 并显示错误信息
     #[cfg(target_os = "windows")]
     {
@@ -66,6 +66,33 @@ fn main() -> wry::Result<()> {
             std::thread::sleep(std::time::Duration::from_secs(30));
         }));
     }
+    
+    println!("=== Pake 应用启动 ===");
+    println!("请等待，如果出现错误，窗口将保持打开 30 秒...");
+    
+    // 使用 catch_unwind 捕获 panic
+    let result = std::panic::catch_unwind(|| {
+        match main_inner() {
+            Ok(_) => {
+                println!("应用正常退出");
+            }
+            Err(e) => {
+                eprintln!("应用错误: {:?}", e);
+                println!("\n窗口将在 30 秒后关闭，请查看上面的错误信息...");
+                std::thread::sleep(std::time::Duration::from_secs(30));
+            }
+        }
+    });
+    
+    if let Err(e) = result {
+        eprintln!("应用崩溃: {:?}", e);
+        println!("\n窗口将在 30 秒后关闭，请查看上面的错误信息...");
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    }
+}
+
+fn main_inner() -> wry::Result<()> {
+    println!("Pake 应用启动中...");
     
     #[cfg(target_os = "macos")]
     let (menu_bar_menu, close_item) = {
