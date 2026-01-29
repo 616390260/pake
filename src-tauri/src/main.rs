@@ -108,14 +108,14 @@ fn main() -> wry::Result<()> {
             Ok(result) => result,
             Err(e) => {
                 println!("错误: 读取配置文件时发生 panic: {:?}", e);
-                return Err(wry::Error::Init("配置文件读取失败".into()));
+                return Err(wry::Error::init("配置文件读取失败".into()));
             }
         };
         let package_name = match package_name {
             Some(name) => name.to_lowercase(),
             None => {
                 println!("错误: 配置文件中没有 package name");
-                return Err(wry::Error::Init("配置文件中没有 package name".into()));
+                return Err(wry::Error::init("配置文件中没有 package name".into()));
             }
         };
         let config = windows_config.unwrap_or_default();
@@ -195,7 +195,7 @@ fn main() -> wry::Result<()> {
     let window = common_window.build(&event_loop)
         .map_err(|e| {
             eprintln!("错误: 无法创建窗口: {:?}", e);
-            wry::Error::Init(format!("无法创建窗口: {:?}", e))
+            wry::Error::init(format!("无法创建窗口: {:?}", e))
         })?;
 
     #[cfg(target_os = "macos")]
@@ -208,7 +208,7 @@ fn main() -> wry::Result<()> {
         .build(&event_loop)
         .map_err(|e| {
             eprintln!("错误: 无法创建窗口: {:?}", e);
-            wry::Error::Init(format!("无法创建窗口: {:?}", e))
+            wry::Error::init(format!("无法创建窗口: {:?}", e))
         })?;
 
     // Handling events of JS -> Rust
@@ -229,14 +229,13 @@ fn main() -> wry::Result<()> {
     let download_started = {
         let proxy = proxy.clone();
         move |uri: String, default_path: &mut PathBuf| {
-            let path = download_dir()
-                .map_err(|e| {
-                    eprintln!("错误: 无法创建图标: {:?}", e);
-                    wry::Error::Init(format!("无法创建图标: {:?}", e))
-                })?
-                .join(default_path.display().to_string())
-                .as_path()
-                .to_path_buf();
+            let path = match download_dir() {
+                Some(dir) => dir.join(default_path.display().to_string()).as_path().to_path_buf(),
+                None => {
+                    eprintln!("警告: 无法找到下载目录，使用临时目录");
+                    std::env::temp_dir().join(default_path.display().to_string())
+                }
+            };
             *default_path = path.clone();
             let submitted = proxy
                 .send_event(UserEvent::DownloadStarted(uri, path.display().to_string()))
