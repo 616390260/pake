@@ -124,15 +124,29 @@ jobs:
             & node cli.js $args
             if ($LASTEXITCODE -eq 0) {
               $buildSuccess = $true
+              Write-Host "构建成功，退出码: $LASTEXITCODE"
+              # 如果构建成功，检查是否生成了安装包（在工作目录根目录或 bundle 目录）
+              $rootMsiFiles = Get-ChildItem -Filter "*.msi" -ErrorAction SilentlyContinue
+              $rootNsisFiles = Get-ChildItem -Filter "*setup.exe" -ErrorAction SilentlyContinue
+              $bundleMsiFiles = Get-ChildItem -Recurse -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\msi\*" }
+              $bundleNsisFiles = Get-ChildItem -Recurse -Filter "*setup.exe" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\nsis\*" -and $_.Name -like "*setup*" }
+              
+              if ($rootMsiFiles -or $rootNsisFiles -or $bundleMsiFiles -or $bundleNsisFiles) {
+                Write-Host "找到安装包，停止后续尝试"
+                break
+              }
             }
           } catch {
             Write-Host "Build attempt failed: $attempt"
           }
 
           # 如果本次已经产出了安装包，就不再继续下一次尝试
-          $msiFiles = Get-ChildItem -Recurse -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\msi\*" }
-          $nsisFiles = Get-ChildItem -Recurse -Filter "*setup.exe" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\nsis\*" -and $_.Name -like "*setup*" }
-          if ($msiFiles -or $nsisFiles) {
+          $rootMsiFiles = Get-ChildItem -Filter "*.msi" -ErrorAction SilentlyContinue
+          $rootNsisFiles = Get-ChildItem -Filter "*setup.exe" -ErrorAction SilentlyContinue
+          $bundleMsiFiles = Get-ChildItem -Recurse -Filter "*.msi" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\msi\*" }
+          $bundleNsisFiles = Get-ChildItem -Recurse -Filter "*setup.exe" -ErrorAction SilentlyContinue | Where-Object { $_.DirectoryName -like "*\bundle\nsis\*" -and $_.Name -like "*setup*" }
+          if ($rootMsiFiles -or $rootNsisFiles -or $bundleMsiFiles -or $bundleNsisFiles) {
+            Write-Host "找到安装包，停止后续尝试"
             break
           }
         }
