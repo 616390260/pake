@@ -108,14 +108,16 @@ fn main() -> wry::Result<()> {
             Ok(result) => result,
             Err(e) => {
                 println!("错误: 读取配置文件时发生 panic: {:?}", e);
-                return Err(wry::Error::init("配置文件读取失败".into()));
+                eprintln!("错误: 读取配置文件时发生 panic: {:?}", e);
+                std::process::exit(1);
             }
         };
         let package_name = match package_name {
             Some(name) => name.to_lowercase(),
             None => {
                 println!("错误: 配置文件中没有 package name");
-                return Err(wry::Error::init("配置文件中没有 package name".into()));
+                eprintln!("错误: 配置文件中没有 package name");
+                std::process::exit(1);
             }
         };
         let config = windows_config.unwrap_or_default();
@@ -195,7 +197,7 @@ fn main() -> wry::Result<()> {
     let window = common_window.build(&event_loop)
         .map_err(|e| {
             eprintln!("错误: 无法创建窗口: {:?}", e);
-            wry::Error::init(format!("无法创建窗口: {:?}", e))
+            e
         })?;
 
     #[cfg(target_os = "macos")]
@@ -208,7 +210,7 @@ fn main() -> wry::Result<()> {
         .build(&event_loop)
         .map_err(|e| {
             eprintln!("错误: 无法创建窗口: {:?}", e);
-            wry::Error::init(format!("无法创建窗口: {:?}", e))
+            e
         })?;
 
     // Handling events of JS -> Rust
