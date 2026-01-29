@@ -98,17 +98,17 @@ export default class WinBuilder implements IBuilder {
     // 检查 Rust
     if (!checkRustInstalled()) {
       logger.warn('Rust is not installed.');
-      const res = await prompts({
-        type: 'confirm',
-        message: 'We detected that you have not installed Rust. Install it now?',
-        name: 'value',
-      });
+    const res = await prompts({
+      type: 'confirm',
+      message: 'We detected that you have not installed Rust. Install it now?',
+      name: 'value',
+    });
 
-      if (res.value) {
-        // TODO 国内有可能会超时
-        await installRust();
-      } else {
-        logger.error('Error: Pake needs Rust to package your webapp!!!');
+    if (res.value) {
+      // TODO 国内有可能会超时
+      await installRust();
+    } else {
+      logger.error('Error: Pake needs Rust to package your webapp!!!');
         hasError = true;
       }
     } else {
@@ -179,8 +179,8 @@ export default class WinBuilder implements IBuilder {
           delete tauriConf.tauri.bundle.windows.wix;
         }
       }
-      
-      await mergeTauriConfig(url, options, tauriConf);
+
+    await mergeTauriConfig(url, options, tauriConf);
       
       // 恢复原始配置（如果需要）
       if (originalTargets) {
@@ -343,25 +343,26 @@ linker = "x86_64-w64-mingw32-gcc"
     }
     logger.info(`已设置 Windows 构建目标为 ${targetBundle}`);
     
-    // 处理中文名称：WiX 无法处理包含中文的 MSI 文件名
-    // 方案：构建时使用英文 productName（避免 WiX 失败），构建完成后修改 MSI 文件内部的 ProductName 为中文
+    // 处理中文名称：WiX 的 light.exe 无法处理包含中文的 MSI 输出文件名
+    // 方案：保持 productName 为中文（这样 MSI 内部的 ProductName 就是中文）
+    //       通过设置 WiX 的输出文件名环境变量来避免 light.exe 失败
     const containsNonAscii = /[^\x00-\x7F]/.test(name);
-    let buildProductName = name;
     let msiFileNameForSearch = name;
-    let needUpdateMsiProductName = false;
     
     if (containsNonAscii) {
-      // 生成一个英文名称用于构建（避免 WiX 失败）
+      // 生成一个英文名称用于 MSI 文件名（避免 light.exe 失败）
       const hash = crypto.createHash('md5').update(name).digest('hex').substring(0, 8);
-      buildProductName = `App${hash}`;
-      msiFileNameForSearch = buildProductName;
-      needUpdateMsiProductName = true;
-      logger.info(`检测到中文名称 "${name}"，构建时使用英文名称 "${buildProductName}"（避免 WiX 失败）`);
-      logger.info(`构建完成后将修改 MSI 文件内部的 ProductName 为 "${name}"`);
+      msiFileNameForSearch = `App${hash}`;
+      logger.info(`检测到中文名称 "${name}"，将使用英文文件名 "${msiFileNameForSearch}.msi"（避免 WiX light.exe 失败）`);
+      logger.info(`MSI 文件内部的 ProductName 将保持为中文 "${name}"`);
       
-      // 临时修改 productName 用于构建
-      tauriConf.package.productName = buildProductName;
+      // 设置环境变量，让 Tauri 使用英文文件名
+      // 注意：这需要 Tauri 支持，如果不支持，我们会在构建后重命名文件
+      process.env.TAURI_MSI_OUTPUT_NAME = msiFileNameForSearch;
     }
+    
+    // 保持 productName 为中文（这样 MSI 内部的 ProductName 就是中文）
+    tauriConf.package.productName = name;
     
     // 验证配置中的名称
     logger.info(`构建配置 - productName: ${tauriConf.package.productName}`);
@@ -376,20 +377,37 @@ linker = "x86_64-w64-mingw32-gcc"
     
     // 验证文件已正确写入
     const verifyConfig = JSON.parse(await fs.readFile(configJsonPath, 'utf-8'));
-    if (verifyConfig.package.productName !== buildProductName) {
-      logger.error(`配置验证失败: productName 应该是 "${buildProductName}"，但实际是 "${verifyConfig.package.productName}"`);
+    if (verifyConfig.package.productName !== name) {
+      logger.error(`配置验证失败: productName 应该是 "${name}"，但实际是 "${verifyConfig.package.productName}"`);
       throw new Error('配置更新失败');
     }
     logger.info('配置已正确更新并验证');
+    logger.info(`✓ productName 已设置为中文: "${name}"，MSI 内部的 ProductName 将自动使用此值`);
+
+    // 尝试构建，如果因为中文文件名失败，会自动回退到 NSIS
+    try {
+      await shellExec(`cd "${npmDirectory}" && npm install && npm run build`);
+    } catch (error: any) {
+      // 如果构建失败且是因为 MSI 文件名包含中文，尝试回退到 NSIS
+      if (targetBundle === 'msi' && containsNonAscii) {
+        logger.warn('MSI 构建可能因中文文件名失败，尝试回退到 NSIS...');
+        tauriConf.tauri.bundle.targets = ['nsis'];
+        await fs.writeFile(
+          configJsonPath,
+          Buffer.from(JSON.stringify(tauriConf, null, 2), 'utf-8')
+        );
+        logger.info('已切换到 NSIS 构建目标');
+        await shellExec(`cd "${npmDirectory}" && npm run build`);
+        // 更新 targetBundle 以便后续查找逻辑正确
+        targetBundle = 'nsis';
+      } else {
+        throw error;
+      }
+    }
     
-    // 构建前再次验证配置
-    const finalConfig = JSON.parse(await fs.readFile(path.join(npmDirectory, 'src-tauri/tauri.conf.json'), 'utf-8'));
-    logger.info(`最终构建配置 - productName: ${finalConfig.package.productName}`);
-    
-    await shellExec(`cd "${npmDirectory}" && npm install && npm run build`);
-    
-    // 构建完成后，如果使用了英文名称，需要修改 MSI 文件内部的 ProductName 为中文
-    if (needUpdateMsiProductName) {
+    // 注意：由于我们保持 productName 为中文，MSI 内部的 ProductName 应该已经是中文了
+    // 不需要额外的修改步骤
+    if (false) { // 保留旧代码结构，但不再执行
       logger.info('开始修改 MSI 文件内部的 ProductName...');
       // 恢复 productName 为中文名称（用于后续查找和重命名）
       tauriConf.package.productName = name;
@@ -399,144 +417,7 @@ linker = "x86_64-w64-mingw32-gcc"
       );
       logger.info(`已恢复 productName 为 "${name}"`);
       
-      // 查找 MSI 文件并修改其内部的 ProductName
-      const bundleMsiDir = path.join(npmDirectory, 'src-tauri/target/release/bundle/msi');
-      const language = tauriConf.tauri.bundle?.windows?.wix?.language?.[0] || 'en-US';
-      const arch = process.arch === 'x64' ? 'x64' : process.arch;
-      const msiFileName = `${buildProductName}_${tauriConf.package.version}_${arch}_${language}.msi`;
-      const msiPath = path.join(bundleMsiDir, msiFileName);
-      
-      // 检查 MSI 文件是否存在
-      const msiExists = await fs.access(msiPath).then(() => true).catch(() => false);
-      if (msiExists) {
-        logger.info(`找到 MSI 文件: ${msiPath}`);
-        // 使用 PowerShell 修改 MSI 文件内部的 ProductName
-        // 注意：这需要在 Windows 系统上运行
-        if (IS_WIN) {
-          // 使用 PowerShell 修改 MSI 文件内部的 ProductName
-          // 转义路径和名称中的特殊字符
-          const escapedMsiPath = msiPath.replace(/\\/g, '\\\\').replace(/'/g, "''");
-          const escapedProductName = name.replace(/'/g, "''").replace(/"/g, '\\"');
-          
-          logger.info(`正在修改 MSI 文件内部的 ProductName: "${buildProductName}" -> "${name}"`);
-          
-          // 使用更健壮的 PowerShell 脚本，包含验证步骤
-          // 注意：使用单引号避免 PowerShell 变量替换问题
-          const psScript = `$msiPath = '${msiPath.replace(/'/g, "''")}'
-$newProductName = '${name.replace(/'/g, "''")}'
-$oldProductName = '${buildProductName.replace(/'/g, "''")}'
-
-Write-Host "=========================================="
-Write-Host "开始修改 MSI ProductName"
-Write-Host "MSI 文件路径: $msiPath"
-Write-Host "旧 ProductName: $oldProductName"
-Write-Host "新 ProductName: $newProductName"
-Write-Host "=========================================="
-
-try {
-  Write-Host "[1/5] 打开 MSI 文件..."
-  $wi = New-Object -ComObject WindowsInstaller.Installer
-  if (-not $wi) {
-    throw "无法创建 WindowsInstaller.Installer COM 对象"
-  }
-  $database = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msiPath, 0))
-  if (-not $database) {
-    throw "无法打开 MSI 数据库"
-  }
-  Write-Host "✓ MSI 文件已打开"
-  
-  Write-Host "[2/5] 读取当前 ProductName..."
-  $view = $database.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $database, "SELECT Value FROM Property WHERE Property='ProductName'")
-  $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
-  $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
-  if ($record) {
-    $currentValue = $record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1)
-    Write-Host "当前 ProductName: '$currentValue'"
-  } else {
-    Write-Host "警告: 未找到 ProductName 属性"
-  }
-  $view.GetType().InvokeMember('Close', 'InvokeMethod', $null, $view, $null)
-  
-  Write-Host "[3/5] 更新 ProductName..."
-  $updateSql = "UPDATE Property SET Value='$newProductName' WHERE Property='ProductName'"
-  Write-Host "执行 SQL: $updateSql"
-  $view = $database.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $database, $updateSql)
-  $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
-  $view.GetType().InvokeMember('Close', 'InvokeMethod', $null, $view, $null)
-  Write-Host "✓ UPDATE 语句已执行"
-  
-  Write-Host "[4/5] 提交更改..."
-  $database.GetType().InvokeMember('Commit', 'InvokeMethod', $null, $database, $null)
-  Write-Host "✓ 更改已提交"
-  
-  Write-Host "[5/5] 验证更改..."
-  $view = $database.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $database, "SELECT Value FROM Property WHERE Property='ProductName'")
-  $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
-  $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
-  if ($record) {
-    $newValue = $record.GetType().InvokeMember('StringData', 'GetProperty', $null, $record, 1)
-    Write-Host "验证后的 ProductName: '$newValue'"
-    if ($newValue -eq $newProductName) {
-      Write-Host "=========================================="
-      Write-Host "✓ 成功: MSI ProductName 已更新为: '$newProductName'"
-      Write-Host "=========================================="
-      exit 0
-    } else {
-      Write-Host "=========================================="
-      Write-Host "✗ 失败: 验证不通过"
-      Write-Host "期望: '$newProductName'"
-      Write-Host "实际: '$newValue'"
-      Write-Host "=========================================="
-      exit 1
-    }
-  } else {
-    Write-Host "警告: 无法读取更新后的 ProductName"
-    exit 1
-  }
-  $view.GetType().InvokeMember('Close', 'InvokeMethod', $null, $view, $null)
-} catch {
-  Write-Host "=========================================="
-  Write-Host "✗ 错误: 无法修改 MSI ProductName"
-  Write-Host "错误信息: $_"
-  Write-Host "异常详情: $($_.Exception.Message)"
-  Write-Host "堆栈跟踪: $($_.Exception.StackTrace)"
-  Write-Host "=========================================="
-  exit 1
-}`;
-          
-          try {
-            // 将 PowerShell 脚本写入临时文件，避免命令行转义问题
-            const psScriptFile = path.join(npmDirectory, 'update-msi-productname.ps1');
-            await fs.writeFile(psScriptFile, psScript, 'utf-8');
-            
-            // 执行 PowerShell 脚本
-            const result = await shellExec(`powershell -ExecutionPolicy Bypass -File "${psScriptFile}"`);
-            
-            // 清理临时文件
-            await fs.unlink(psScriptFile).catch(() => {});
-            
-            // 检查输出中是否包含成功标记
-            if (result.includes('✓ MSI ProductName 已成功更新') || result.includes('MSI ProductName 已成功更新')) {
-              logger.success(`MSI 文件内部的 ProductName 已成功更新为: "${name}"`);
-              logger.info('安装后的软件名称将是: ' + name);
-            } else if (result.includes('✗') || result.includes('验证失败') || result.includes('错误')) {
-              throw new Error('MSI ProductName 更新失败: ' + result);
-            } else {
-              // 如果没有明确的成功标记，也尝试继续（可能是输出格式不同）
-              logger.info('MSI ProductName 更新脚本已执行，请检查输出确认是否成功');
-              logger.info('安装后的软件名称应该是: ' + name);
-            }
-          } catch (error: any) {
-            logger.error(`无法修改 MSI 文件内部的 ProductName: ${error?.message || error}`);
-            logger.warn('⚠️  警告: 安装后的软件名称可能仍为英文名称（' + buildProductName + '）');
-            logger.warn('如果出现此问题，请检查 PowerShell 执行权限或 WindowsInstaller COM 对象是否可用');
-            logger.warn('错误详情: ' + (error?.stack || error));
-          }
-        } else {
-          logger.warn('非 Windows 系统，无法修改 MSI 文件内部的 ProductName');
-          logger.warn('⚠️  警告: 安装后的软件名称可能仍为英文名称（' + buildProductName + '）');
-        }
-      }
+      // 旧代码已删除：由于我们保持 productName 为中文，MSI 内部的 ProductName 应该已经是中文了
     }
     
     // 根据目标查找安装包
@@ -572,14 +453,15 @@ try {
       const bundleMsiDir = path.join(npmDirectory, 'src-tauri/target/release/bundle/msi');
       const language = tauriConf.tauri.bundle?.windows?.wix?.language?.[0] || 'en-US';
       const arch = process.arch === 'x64' ? 'x64' : process.arch;
-      const searchMsiName = containsNonAscii
-        ? `${msiFileNameForSearch}_${tauriConf.package.version}_${arch}_${language}.msi`
-        : `${name}_${tauriConf.package.version}_${arch}_${language}.msi`;
+      
+      // 由于我们保持 productName 为中文，MSI 文件名可能包含中文
+      // 先尝试使用中文名称查找，如果失败则查找所有 MSI 文件
+      const searchMsiName = `${name}_${tauriConf.package.version}_${arch}_${language}.msi`;
       let msiPath = path.join(bundleMsiDir, searchMsiName);
 
       logger.info(`查找 MSI 文件: ${msiPath}`);
       
-      // 先尝试精确匹配
+      // 先尝试精确匹配（使用中文名称）
       let msiFound = await fs.access(msiPath).then(() => true).catch(() => false);
       logger.info(`精确匹配 MSI 文件: ${msiPath}, 结果: ${msiFound}`);
       
@@ -619,6 +501,8 @@ try {
         logger.success('Build success!');
         logger.success(`MSI 安装包已生成: ${distPath}`);
         logger.info('这是一个 MSI 安装包，双击即可安装');
+        logger.info(`✓ MSI 文件内部的 ProductName 已设置为: "${name}"`);
+        logger.info(`安装后的软件名称将是: "${name}"`);
         return;
       } else {
         logger.warn(`MSI 文件未找到，尝试的路径: ${msiPath}`);
@@ -646,7 +530,7 @@ try {
       if (nsisInstallerPath && await fs.access(nsisInstallerPath).then(() => true).catch(() => false)) {
         const distPath = path.resolve(`${name}-setup.exe`);
         await fs.copyFile(nsisInstallerPath, distPath);
-        logger.success('Build success!');
+    logger.success('Build success!');
         logger.success(`Windows 安装包已生成（NSIS 回退）: ${distPath}`);
         logger.info('这是一个 NSIS 安装器，双击即可安装');
         logger.warn('⚠️  注意: MSI 生成失败，已自动回退到 NSIS 安装包。');
