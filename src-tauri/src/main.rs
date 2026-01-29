@@ -2,6 +2,35 @@
 // 临时注释掉以显示错误信息，生产环境可以恢复
 // #![windows_subsystem = "windows"]
 extern crate image;
+
+// 设置 panic hook，捕获 panic 并显示错误信息
+#[cfg(target_os = "windows")]
+std::panic::set_hook(Box::new(|panic_info| {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    
+    let error_msg = format!("应用崩溃: {:?}", panic_info);
+    println!("{}", error_msg);
+    
+    // 写入日志文件
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(std::env::var("APPDATA").unwrap_or_default() + "\\pake_crash.log")
+    {
+        let _ = writeln!(file, "{}", error_msg);
+        let _ = writeln!(file, "位置: {:?}", panic_info.location());
+        if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            let _ = writeln!(file, "消息: {}", s);
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            let _ = writeln!(file, "消息: {}", s);
+        }
+    }
+    
+    // 保持窗口打开 30 秒，让用户看到错误信息
+    println!("\n窗口将在 30 秒后关闭...");
+    std::thread::sleep(std::time::Duration::from_secs(30));
+}));
 use tauri_utils::config::{Config, WindowConfig};
 use wry::{
     application::{
@@ -73,10 +102,20 @@ fn main() -> wry::Result<()> {
         },
     ) = {
         println!("正在读取配置文件...");
-        let (package_name, windows_config) = get_windows_config();
-        let package_name = package_name
-            .expect("can't get package name in config file")
-            .to_lowercase();
+        let (package_name, windows_config) = match std::panic::catch_unwind(|| get_windows_config()) {
+            Ok(result) => result,
+            Err(e) => {
+                println!("错误: 读取配置文件时发生 panic: {:?}", e);
+                return Err(wry::Error::Init("配置文件读取失败".into()));
+            }
+        };
+        let package_name = match package_name {
+            Some(name) => name.to_lowercase(),
+            None => {
+                println!("错误: 配置文件中没有 package name");
+                return Err(wry::Error::Init("配置文件中没有 package name".into()));
+            }
+        };
         let config = windows_config.unwrap_or_default();
         println!("配置读取成功: package_name={}, url={}", package_name, config.url.to_string());
         (package_name, config)
@@ -218,8 +257,14 @@ fn main() -> wry::Result<()> {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     let webview = {
         let home_dir = match home::home_dir() {
-            Some(path1) => path1,
-            None => panic!("Error, can't found you home dir!!"),
+            Some(path1) => {
+                println!("找到用户主目录: {}", path1.display());
+                path1
+            }
+            None => {
+                eprintln!("错误: 无法找到用户主目录");
+                std::process::exit(1);
+            }
         };
         #[cfg(target_os = "windows")]
         let data_dir = home_dir.join("AppData").join("Roaming").join(package_name);
