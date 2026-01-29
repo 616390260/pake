@@ -343,31 +343,24 @@ linker = "x86_64-w64-mingw32-gcc"
     }
     logger.info(`已设置 Windows 构建目标为 ${targetBundle}`);
     
-    // 检查 productName 是否包含非 ASCII 字符（如中文）
-    // 如果包含，使用英文名称生成 MSI 文件名，但保持应用内部显示名称为中文
+    // 保持 productName 为原始名称（包括中文），确保安装后的软件名称正确
+    // 只在使用 hash 名称查找和重命名 MSI 文件时使用英文名称
     const containsNonAscii = /[^\x00-\x7F]/.test(name);
-    let buildProductName = name;
-    let msiFileName = name;
+    let msiSearchName = name; // 用于查找 MSI 文件的名称
     
     if (containsNonAscii) {
-      // 生成一个英文名称用于 MSI 文件名（使用拼音或音译，或简单的英文标识符）
-      // 这里使用一个简单的方案：将中文转换为拼音首字母，或使用一个固定的英文前缀
-      // 为了简单，我们使用 "App" + 时间戳，或者使用 name 的拼音首字母
-      // 但为了保持一致性，我们使用一个基于 name 的哈希值
+      // 生成一个英文名称用于查找 MSI 文件名（WiX 可能会生成英文文件名）
       const hash = crypto.createHash('md5').update(name).digest('hex').substring(0, 8);
-      buildProductName = `App${hash}`;
-      logger.info(`检测到中文名称 "${name}"，使用英文名称 "${buildProductName}" 生成 MSI 文件名`);
-      logger.info(`应用内部显示名称仍为 "${name}"`);
-      
-      // 临时修改 productName 用于生成 MSI 文件名
-      tauriConf.package.productName = buildProductName;
+      msiSearchName = `App${hash}`;
+      logger.info(`检测到中文名称 "${name}"，将使用英文名称 "${msiSearchName}" 查找 MSI 文件`);
+      logger.info(`应用内部显示名称保持为 "${name}"`);
     }
     
-    // 验证配置中的名称
+    // 验证配置中的名称（保持为中文）
     logger.info(`构建配置 - productName: ${tauriConf.package.productName}`);
     logger.info(`构建配置 - name 参数: ${name}`);
     
-    // 保存更新后的配置
+    // 保存更新后的配置（productName 保持为中文）
     const configJsonPath = path.join(npmDirectory, 'src-tauri/tauri.conf.json');
     await fs.writeFile(
       configJsonPath,
@@ -376,28 +369,17 @@ linker = "x86_64-w64-mingw32-gcc"
     
     // 验证文件已正确写入
     const verifyConfig = JSON.parse(await fs.readFile(configJsonPath, 'utf-8'));
-    if (verifyConfig.package.productName !== buildProductName) {
-      logger.error(`配置验证失败: productName 应该是 "${buildProductName}"，但实际是 "${verifyConfig.package.productName}"`);
+    if (verifyConfig.package.productName !== name) {
+      logger.error(`配置验证失败: productName 应该是 "${name}"，但实际是 "${verifyConfig.package.productName}"`);
       throw new Error('配置更新失败');
     }
-    logger.info('配置已正确更新并验证');
+    logger.info('配置已正确更新并验证（productName 保持为中文）');
     
     // 构建前再次验证配置
     const finalConfig = JSON.parse(await fs.readFile(path.join(npmDirectory, 'src-tauri/tauri.conf.json'), 'utf-8'));
     logger.info(`最终构建配置 - productName: ${finalConfig.package.productName}`);
     
     await shellExec(`cd "${npmDirectory}" && npm install && npm run build`);
-    
-    // 构建完成后，如果使用了英文名称，需要恢复中文名称并重命名 MSI 文件
-    if (containsNonAscii) {
-      // 恢复 productName 为中文名称
-      tauriConf.package.productName = name;
-      await fs.writeFile(
-        configJsonPath,
-        Buffer.from(JSON.stringify(tauriConf, null, 2), 'utf-8')
-      );
-      logger.info(`已恢复 productName 为 "${name}"`);
-    }
     
     // 根据目标查找安装包
     logger.info(`开始查找安装包，targetBundle: ${targetBundle}`);
