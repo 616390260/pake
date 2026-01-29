@@ -113,6 +113,9 @@ jobs:
         $buildSuccess = $false
         foreach ($attempt in $attempts) {
           Write-Host "==== Build attempt: $attempt ===="
+          # 每次尝试前重新编译 CLI，确保使用最新代码
+          Write-Host "重新编译 CLI..."
+          npm run cli:build
           $env:PAKE_WINDOWS_INSTALLER = $attempt
           Write-Host "设置环境变量 PAKE_WINDOWS_INSTALLER=$env:PAKE_WINDOWS_INSTALLER"
           try {
