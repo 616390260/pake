@@ -119,8 +119,11 @@ jobs:
         Write-Host "PAKE_WINDOWS_INSTALLER=$env:PAKE_WINDOWS_INSTALLER"
         
         $args = @("${{ inputs.url }}", "--name", "${{ inputs.name }}", "--target", "win")
-        if ("${{ inputs.icon }}" -ne "" -and $env:ICON_PATH) {
+        if ("${{ inputs.icon }}" -ne "" -and $env:ICON_PATH -and $env:ICON_PATH -ne "") {
+          Write-Host "Using custom icon: $env:ICON_PATH"
           $args += @("--icon", $env:ICON_PATH)
+        } else {
+          Write-Host "Using default icon (no custom icon provided or icon download failed)"
         }
         Write-Host "Running: node cli.js $($args -join ' ')"
         
