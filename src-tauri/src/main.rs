@@ -175,37 +175,66 @@ fn main_inner() -> wry::Result<()> {
 
     #[cfg(target_os = "windows")]
     let window = {
-        // 尝试查找图标文件，支持中文名称和英文哈希名称
-        let mut icon_path = format!("png/{}_32.ico", package_name);
-        
-        // 如果使用中文名称找不到图标，尝试使用英文哈希名称（和 JavaScript 相同的 MD5 逻辑）
-        if !std::path::Path::new(&icon_path).exists() {
-            // 如果 package_name 包含非 ASCII 字符，生成英文哈希名称
-            let has_non_ascii = package_name.chars().any(|c| c as u32 > 127);
-            if has_non_ascii {
-                let hash = md5::compute(package_name.as_bytes());
-                let hash_hex = format!("{:x}", hash);
-                let hash_prefix = &hash_hex[..8.min(hash_hex.len())];
-                icon_path = format!("png/app{}_32.ico", hash_prefix);
-            }
-        }
-        
-        // 如果还是找不到，使用默认图标
-        if !std::path::Path::new(&icon_path).exists() {
-            icon_path = "png/icon_32.ico".to_string();
-        }
-        
-        println!("尝试加载图标: {}", icon_path);
-        let icon = match load_icon(std::path::Path::new(&icon_path)) {
-            Ok(icon) => {
-                println!("图标加载成功: {}", icon_path);
-                Some(icon)
+        // 获取可执行文件所在目录，用于查找资源文件
+        let exe_dir = match std::env::current_exe() {
+            Ok(exe_path) => {
+                exe_path.parent().map(|p| p.to_path_buf()).unwrap_or_default()
             }
             Err(e) => {
-                println!("警告: 无法加载图标 {}: {:?}，使用默认图标", icon_path, e);
-                None
+                println!("警告: 无法获取可执行文件路径: {:?}，使用当前目录", e);
+                std::env::current_dir().unwrap_or_default()
             }
         };
+        println!("可执行文件目录: {}", exe_dir.display());
+        
+        // 尝试查找图标文件，支持中文名称和英文哈希名称
+        // 先尝试相对路径（开发环境），再尝试可执行文件目录（安装后）
+        let mut icon_paths = vec![
+            format!("png/{}_32.ico", package_name),
+            exe_dir.join(format!("png/{}_32.ico", package_name)).to_string_lossy().to_string(),
+        ];
+        
+        // 如果 package_name 包含非 ASCII 字符，添加英文哈希名称路径
+        let has_non_ascii = package_name.chars().any(|c| c as u32 > 127);
+        if has_non_ascii {
+            let hash = md5::compute(package_name.as_bytes());
+            let hash_hex = format!("{:x}", hash);
+            let hash_prefix = &hash_hex[..8.min(hash_hex.len())];
+            icon_paths.push(format!("png/app{}_32.ico", hash_prefix));
+            icon_paths.push(exe_dir.join(format!("png/app{}_32.ico", hash_prefix)).to_string_lossy().to_string());
+        }
+        
+        // 添加默认图标路径
+        icon_paths.push("png/icon_32.ico".to_string());
+        icon_paths.push(exe_dir.join("png/icon_32.ico").to_string_lossy().to_string());
+        
+        // 尝试每个路径，找到第一个存在的
+        let mut icon_path = None;
+        for path_str in &icon_paths {
+            let path = std::path::Path::new(path_str);
+            if path.exists() {
+                println!("找到图标文件: {}", path_str);
+                icon_path = Some(path_str.clone());
+                break;
+            }
+        }
+        
+        let icon = if let Some(ref path_str) = icon_path {
+            match load_icon(std::path::Path::new(path_str)) {
+                Ok(icon) => {
+                    println!("图标加载成功: {}", path_str);
+                    Some(icon)
+                }
+                Err(e) => {
+                    println!("警告: 无法加载图标 {}: {:?}，跳过图标", path_str, e);
+                    None
+                }
+            }
+        } else {
+            println!("警告: 未找到任何图标文件，跳过图标");
+            None
+        };
+        
         let mut window_builder = common_window.with_decorations(true);
         if let Some(icon) = icon {
             window_builder = window_builder.with_window_icon(Some(icon));
@@ -213,7 +242,7 @@ fn main_inner() -> wry::Result<()> {
         println!("正在创建窗口...");
         window_builder.build(&event_loop)
             .map_err(|e| {
-                println!("错误: 无法创建窗口: {:?}", e);
+                eprintln!("错误: 无法创建窗口: {:?}", e);
                 e
             })?
     };
