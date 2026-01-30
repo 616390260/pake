@@ -36,6 +36,16 @@ enum UserEvent {
 }
 
 fn main() {
+    // 立即刷新输出，确保能看到日志
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    
+    println!("=== Pake 应用启动 ===");
+    println!("版本: 调试版本（显示控制台）");
+    println!("如果应用闪退，请查看下面的错误信息...");
+    println!("");
+    
     // 设置 panic hook，捕获 panic 并显示错误信息
     #[cfg(target_os = "windows")]
     {
@@ -44,14 +54,17 @@ fn main() {
             use std::io::Write;
             
             let error_msg = format!("应用崩溃: {:?}", panic_info);
-            println!("{}", error_msg);
+            eprintln!("{}", error_msg);
+            let _ = std::io::stderr().flush();
             
             // 写入日志文件
+            let log_path = std::env::var("APPDATA").unwrap_or_default() + "\\pake_crash.log";
             if let Ok(mut file) = OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(std::env::var("APPDATA").unwrap_or_default() + "\\pake_crash.log")
+                .open(&log_path)
             {
+                let _ = writeln!(file, "=== 崩溃时间: {:?} ===", std::time::SystemTime::now());
                 let _ = writeln!(file, "{}", error_msg);
                 let _ = writeln!(file, "位置: {:?}", panic_info.location());
                 if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
@@ -59,35 +72,47 @@ fn main() {
                 } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
                     let _ = writeln!(file, "消息: {}", s);
                 }
+                let _ = file.flush();
             }
+            eprintln!("错误日志已保存到: {}", log_path);
             
-            // 保持窗口打开 30 秒，让用户看到错误信息
-            println!("\n窗口将在 30 秒后关闭...");
-            std::thread::sleep(std::time::Duration::from_secs(30));
+            // 保持窗口打开 60 秒，让用户看到错误信息
+            eprintln!("\n窗口将在 60 秒后关闭，请查看上面的错误信息...");
+            eprintln!("或者查看日志文件: {}", log_path);
+            let _ = std::io::stderr().flush();
+            std::thread::sleep(std::time::Duration::from_secs(60));
         }));
     }
     
-    println!("=== Pake 应用启动 ===");
-    println!("请等待，如果出现错误，窗口将保持打开 30 秒...");
+    println!("[1/5] 设置 panic hook... 完成");
+    let _ = std::io::stdout().flush();
     
     // 使用 catch_unwind 捕获 panic
     let result = std::panic::catch_unwind(|| {
+        println!("[2/5] 进入 main_inner...");
+        let _ = std::io::stdout().flush();
+        
         match main_inner() {
             Ok(_) => {
-                println!("应用正常退出");
+                println!("[5/5] 应用正常退出");
+                let _ = std::io::stdout().flush();
             }
             Err(e) => {
-                eprintln!("应用错误: {:?}", e);
-                println!("\n窗口将在 30 秒后关闭，请查看上面的错误信息...");
-                std::thread::sleep(std::time::Duration::from_secs(30));
+                eprintln!("[错误] 应用错误: {:?}", e);
+                let _ = std::io::stderr().flush();
+                eprintln!("\n窗口将在 60 秒后关闭，请查看上面的错误信息...");
+                let _ = std::io::stderr().flush();
+                std::thread::sleep(std::time::Duration::from_secs(60));
             }
         }
     });
     
     if let Err(e) = result {
-        eprintln!("应用崩溃: {:?}", e);
-        println!("\n窗口将在 30 秒后关闭，请查看上面的错误信息...");
-        std::thread::sleep(std::time::Duration::from_secs(30));
+        eprintln!("[崩溃] 应用崩溃: {:?}", e);
+        let _ = std::io::stderr().flush();
+        eprintln!("\n窗口将在 60 秒后关闭，请查看上面的错误信息...");
+        let _ = std::io::stderr().flush();
+        std::thread::sleep(std::time::Duration::from_secs(60));
     }
 }
 
@@ -130,7 +155,8 @@ fn main_inner() -> wry::Result<()> {
             ..
         },
     ) = {
-        println!("正在读取配置文件...");
+        println!("[3/5] 正在读取配置文件...");
+        let _ = std::io::stdout().flush();
         let (package_name, windows_config) = match std::panic::catch_unwind(|| get_windows_config()) {
             Ok(result) => result,
             Err(e) => {
@@ -310,7 +336,8 @@ fn main_inner() -> wry::Result<()> {
     let webview = {
         let user_agent_string = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15";
         let url_str = url.to_string();
-        println!("正在加载 URL: {}", url_str);
+        println!("[4/5] 正在加载 URL: {}", url_str);
+        let _ = std::io::stdout().flush();
         WebViewBuilder::new(window)?
             .with_user_agent(user_agent_string)
             .with_url(&url_str)?
@@ -356,7 +383,8 @@ fn main_inner() -> wry::Result<()> {
         #[cfg(target_os = "linux")]
         let user_agent_string = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36";
         let url_str = url.to_string();
-        println!("正在加载 URL: {}", url_str);
+        println!("[4/5] 正在加载 URL: {}", url_str);
+        let _ = std::io::stdout().flush();
         WebViewBuilder::new(window)?
             .with_user_agent(user_agent_string)
             .with_url(&url_str)?
