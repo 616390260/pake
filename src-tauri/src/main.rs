@@ -338,16 +338,42 @@ fn main_inner() -> wry::Result<()> {
         let url_str = url.to_string();
         println!("[4/5] 正在加载 URL: {}", url_str);
         let _ = std::io::stdout().flush();
-        WebViewBuilder::new(window)?
+        
+        // 验证 URL 格式
+        if url_str.is_empty() || url_str == "null" {
+            eprintln!("[错误] URL 为空或无效: '{}'", url_str);
+            return Err(wry::Error::from(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "URL 为空或无效"
+            )));
+        }
+        
+        println!("[4/5] 正在创建 WebView...");
+        let _ = std::io::stdout().flush();
+        
+        let webview_result = WebViewBuilder::new(window)
             .with_user_agent(user_agent_string)
-            .with_url(&url_str)?
-            .with_devtools(cfg!(feature = "devtools"))
-            .with_initialization_script(include_str!("pake.js"))
-            .with_ipc_handler(handler)
-            .with_back_forward_navigation_gestures(true)
-            .with_download_started_handler(download_started)
-            .with_download_completed_handler(download_completed)
-            .build()?
+            .with_url(&url_str);
+        
+        match webview_result {
+            Ok(mut builder) => {
+                println!("[4/5] WebView 构建器创建成功，继续配置...");
+                let _ = std::io::stdout().flush();
+                builder
+                    .with_devtools(cfg!(feature = "devtools"))
+                    .with_initialization_script(include_str!("pake.js"))
+                    .with_ipc_handler(handler)
+                    .with_back_forward_navigation_gestures(true)
+                    .with_download_started_handler(download_started)
+                    .with_download_completed_handler(download_completed)
+                    .build()
+            }
+            Err(e) => {
+                eprintln!("[错误] 无法创建 WebView 或加载 URL '{}': {:?}", url_str, e);
+                let _ = std::io::stderr().flush();
+                Err(e)
+            }
+        }?
     };
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
